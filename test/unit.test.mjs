@@ -194,7 +194,7 @@ test('chictr corpus: a Node without node:sqlite degrades instead of crashing', a
 });
 
 test('cutoff: the archive cutoff is derived from evidence, never hardcoded', async () => {
-  const { assessCutoff, formatCutoff, latestTimestamp, futureCutoffWarning } = await load('core/cutoff.js');
+  const { assessCutoff, formatCutoff, latestTimestamp, futureCutoffWarning, offsetMinutesOf } = await load('core/cutoff.js');
 
   // The cutoff is the newest usable timestamp; a malformed one must be ignored
   // rather than silently treated as "now", which would make stale data look live.
@@ -232,6 +232,17 @@ test('cutoff: the archive cutoff is derived from evidence, never hardcoded', asy
   // A timestamp with no offset is read as UTC by Date.parse, so it must render
   // as UTC: 07:59Z really is the 27th, and pretending otherwise would be worse.
   assert.equal(formatCutoff('2026-09-28T07:59:24.275394'), '2026-09-27');
+  // The rendering must be pure arithmetic, never an ICU time-zone lookup:
+  // `Etc/GMT-8` resolved locally but not in CI, and `UTC+08:00` is rejected
+  // everywhere. This asserts the offset maths directly so a future refactor back
+  // to Intl fails here rather than only on Linux.
+  assert.equal(offsetMinutesOf('2026-09-28T07:59:24.275394+08:00'), 480);
+  assert.equal(offsetMinutesOf('2026-09-28T07:59:24-05:00'), -300);
+  assert.equal(offsetMinutesOf('2026-09-28T12:00:00Z'), 0);
+  assert.equal(offsetMinutesOf('2026-09-28T07:59:24.275394'), undefined);
+  // A half-hour offset must land on the right date too.
+  assert.equal(formatCutoff('2026-01-01T00:30:00+05:30'), '2026-01-01');
+
   // Unparseable input is shown raw, never invented or silently dropped.
   assert.equal(formatCutoff(undefined), '未知');
   assert.equal(formatCutoff('nonsense'), 'nonsense');

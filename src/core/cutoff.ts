@@ -17,56 +17,41 @@
  * somebody refreshes the data without touching the code.
  */
 
-/** Format a cutoff for display; falls back to the raw value if it is not a date. */
+/** Offset of a timestamp string as minutes east of UTC, or undefined if absent. */
+export function offsetMinutesOf(value: string): number | undefined {
+  const match = /(?:Z|([+-])(\d{2}):?(\d{2})?)$/.exec(value.trim());
+  if (!match) return undefined;
+  if (!match[1]) return 0; // trailing Z
+  const sign = match[1] === '+' ? 1 : -1;
+  return sign * (Number(match[2]) * 60 + Number(match[3] ?? '0'));
+}
+
+/**
+ * Format a cutoff for display; falls back to the raw value if it is not a date.
+ *
+ * The date is rendered in the timestamp's OWN offset, not UTC. These corpora are
+ * captured at +08:00, so slicing UTC reported 2026-09-27 for data captured on
+ * 2026-09-28 - off by a day, in the direction of understating how current the
+ * data is. A reader compares this against a registration date, so it has to be
+ * the date at the capture site.
+ *
+ * The shift is plain arithmetic rather than `Intl` time-zone lookup: offset zone
+ * names are not portable (`Etc/GMT-8` resolved on macOS but not in CI's ICU
+ * build, and `UTC+08:00` is rejected everywhere), and an offset is exactly the
+ * kind of value that should not depend on a timezone database at all.
+ */
 export function formatCutoff(value: string | undefined): string {
   if (!value) return '未知';
   const ms = Date.parse(value);
   if (Number.isNaN(ms)) return value;
-  // Render the date in the timestamp's OWN offset, not UTC. These corpora are
-  // captured in +08:00, so a UTC slice would report 2026-09-27 for data actually
-  // captured on 2026-09-28 - off by a day, in the direction of understating how
-  // current the data is. The date is what a reader compares against a
-  // registration date, so it has to be the date at the capture site.
-  for (const zone of candidateZones(value)) {
-    try {
-      return new Intl.DateTimeFormat('en-CA', {
-        timeZone: zone,
-        year: 'numeric',
-        month: '2-digit',
-        day: '2-digit',
-      }).format(new Date(ms));
-    } catch {
-      // Not a zone this runtime knows; try the next candidate.
-    }
-  }
-  return new Date(ms).toISOString().slice(0, 10);
-}
-
-/**
- * IANA zones to try for a timestamp.
- *
- * `UTC+08:00` is NOT a valid IANA zone name - Intl rejects it - so the offset
- * has to be converted to a fixed-offset zone. Both styles are returned because
- * the naive `Etc/GMT-N` sign inversion is easy to get wrong, and the string
- * comparison below picks whichever candidate actually agrees with the input's
- * own local reading.
- */
-function candidateZones(value: string): string[] {
-  const offset = /([+-])(\d{2}):?(\d{2})?(?=$|\.)/.exec(value.slice(10));
-  if (!offset) return ['UTC'];
-  // A trailing `Z` is handled by the slice(10) miss above only for offsets, so
-  // also normalise an explicit Z.
-  const sign = offset[1] === '+' ? 1 : -1;
-  const minutes = sign * (Number(offset[2]) * 60 + Number(offset[3] ?? '0'));
-  if (minutes === 0) return ['UTC'];
-  // Etc/GMT signs are inverted relative to UTC notation (+08:00 => Etc/GMT-8).
-  const inverted = minutes > 0 ? `Etc/GMT-${minutes / 60}` : `Etc/GMT+${Math.abs(minutes) / 60}`;
-  const candidates = [inverted];
-  if (Number.isInteger(minutes / 60)) {
-    const hours = minutes / 60;
-    candidates.push(hours > 0 ? `Asia/Shanghai` : `America/New_York`);
-  }
-  return candidates;
+  const offset = offsetMinutesOf(value) ?? 0;
+  // A timestamp with no explicit offset is read as UTC by Date.parse, so it is
+  // reported as UTC: 07:59Z really is the 27th.
+  const shifted = new Date(ms + offset * 60_000);
+  const year = shifted.getUTCFullYear();
+  const month = String(shifted.getUTCMonth() + 1).padStart(2, '0');
+  const day = String(shifted.getUTCDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
 }
 
 /** True when the value parses as a date. */
