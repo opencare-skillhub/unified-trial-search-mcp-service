@@ -128,6 +128,51 @@ export function resolveEntry(
   return entry;
 }
 
+/**
+ * Per-attempt timeout. Node's fetch has no usable default for a 25 MB asset over
+ * a slow link, and an unbounded attempt makes a cold start look like a hang.
+ */
+export const DOWNLOAD_TIMEOUT_MS = 120_000;
+
+/**
+ * Turn a fetch failure into something a user can act on.
+ *
+ * `TypeError: fetch failed` is what surfaces at the top level; the actual reason
+ * (DNS failure, connection refused, timeout, TLS, blocked by a network policy)
+ * lives in `cause`, sometimes nested two levels deep. Reporting only the outer
+ * message turns every distinct network problem into the same useless sentence -
+ * so walk the chain, including the aggregate `errors` list some Node failures
+ * carry, and de-duplicate the wording.
+ */
+export function describeFetchError(error: unknown): string {
+  const seen = new Set<string>();
+  const parts: string[] = [];
+  const visit = (value: unknown, depth: number): void => {
+    if (!value || depth > 4) return;
+    if (value instanceof AggregateError) {
+      for (const inner of value.errors) visit(inner, depth + 1);
+      return;
+    }
+    if (value instanceof Error) {
+      const message = value.message?.trim();
+      // "fetch failed" adds nothing once we have the cause, so drop the wrapper.
+      if (message && message !== 'fetch failed' && !seen.has(message)) {
+        seen.add(message);
+        parts.push(message);
+      }
+      visit(value.cause, depth + 1);
+      return;
+    }
+    const text = String(value).trim();
+    if (text && !seen.has(text)) {
+      seen.add(text);
+      parts.push(text);
+    }
+  };
+  visit(error, 0);
+  return parts.length ? parts.join(' <- ') : String(error);
+}
+
 /** Downloads to `destFile`, retrying transient failures. Never leaves a partial file behind. */
 async function download(
   entry: CorpusManifestEntry,
@@ -148,7 +193,10 @@ async function download(
   let lastError: unknown;
   for (let attempt = 1; attempt <= retries; attempt += 1) {
     try {
-      const response = await doFetch(entry.url, { redirect: 'follow' });
+      const response = await doFetch(entry.url, {
+        redirect: 'follow',
+        signal: AbortSignal.timeout(DOWNLOAD_TIMEOUT_MS),
+      });
       if (!response.ok) {
         // 4xx will not fix itself; only retry on 5xx and network errors.
         if (response.status < 500) {
@@ -176,8 +224,10 @@ async function download(
   }
   throw new CorpusError(
     'DOWNLOAD_FAILED',
-    `下载失败（已重试 ${retries} 次）：${lastError instanceof Error ? lastError.message : String(lastError)}`,
-    '检查网络连通性；若默认 Release 不可达，可用 --url 指向镜像或 file:// 本地路径。',
+    `下载失败（已重试 ${retries} 次）：${describeFetchError(lastError)}`,
+    '检查网络连通性（DNS、代理、是否有网络策略拦截）；' +
+      '若默认 Release 不可达，可用 --url 指向镜像或 file:// 本地路径。' +
+      '注意本命令会跟随 GitHub 的 302 跳转，因此重定向目标也必须可达。',
   );
 }
 

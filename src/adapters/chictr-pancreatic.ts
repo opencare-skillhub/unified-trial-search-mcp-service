@@ -103,7 +103,14 @@ export class ChictrPancreaticAdapter {
     const file = ctx.paths.chictrCorpus;
     if (!file) {
       throw new AdapterError('NEEDS_SETUP', 'CORPUS_NOT_CONFIGURED', '未配置 ChiCTR 胰腺癌离线语料路径。', {
-        fixHint: '运行 unified-trial-mcp configure --chictr-corpus <chictr_pancreatic.db 的绝对路径>。',
+        // The corpus is published as a release asset (ADR-008), so "point
+        // configure at a path" is not a complete instruction on its own: a user
+        // in a fresh environment has no such file yet, and telling them only to
+        // configure one leaves them hunting for data this service can fetch.
+        fixHint:
+          '该语料可从公开发布的语料包获取：先运行 unified-trial-mcp fetch-corpus（预览 URL、大小与 sha256），' +
+          '再运行 unified-trial-mcp fetch-corpus --apply 下载并安装，最后用 ' +
+          'unified-trial-mcp configure --chictr-corpus <安装后的 chictr_pancreatic.db 路径> 挂载。',
       });
     }
     const check = await checkPathReadable(file, ctx.paths.evidenceRoots, 'file');
@@ -276,7 +283,9 @@ export class ChictrPancreaticAdapter {
       available: false,
       state: 'NEEDS_SETUP',
       reasonCode: 'CORPUS_NOT_CONFIGURED',
-      explanation: '未配置离线语料路径。',
+      explanation:
+        '未配置离线语料路径。该语料可从公开发布的语料包获取：' +
+        'unified-trial-mcp fetch-corpus --apply 下载安装后，再用 configure --chictr-corpus 挂载。',
       freshness: { kind: this.descriptor.freshness },
       coverage: {
         scope: this.descriptor.scope,

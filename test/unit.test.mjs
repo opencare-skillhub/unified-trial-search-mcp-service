@@ -523,3 +523,119 @@ test('corpus: the manifest and the packer agree on what a corpus is', async () =
     assert.ok(entry.url.endsWith('chictr_pancreatic.tar.gz'), 'the release asset name must match');
   }
 });
+
+test('corpus: a network failure explains the actual cause, not just "fetch failed"', async () => {
+  // Node surfaces connection problems as `TypeError: fetch failed` with the real
+  // reason buried in `cause`. Reporting only the outer message collapses DNS
+  // failure, a blocked port, a TLS error and a timeout into one useless sentence
+  // and sends the user looking in the wrong place.
+  const { describeFetchError } = await load('cli/corpus.js');
+
+  const cause = Object.assign(new Error('Connect Timeout Error (attempted address: github.com:443, timeout: 10000ms)'), {
+    code: 'UND_ERR_CONNECT_TIMEOUT',
+  });
+  const wrapper = Object.assign(new TypeError('fetch failed'), { cause });
+
+  const described = describeFetchError(wrapper);
+  assert.match(described, /Connect Timeout Error/);
+  assert.match(described, /github\.com:443/, 'the host and port must survive, or the user cannot diagnose anything');
+  assert.ok(!described.includes('fetch failed'), 'the useless wrapper wording must be dropped, not prepended');
+
+  // Some Node failures arrive as AggregateError with several attempts (e.g. both
+  // A and AAAA records); every distinct reason has to reach the user.
+  const aggregate = new AggregateError([
+    new Error('connect ECONNREFUSED 140.82.1.1:443'),
+    new Error('connect ETIMEDOUT 140.82.1.2:443'),
+  ]);
+  const many = describeFetchError(Object.assign(new TypeError('fetch failed'), { cause: aggregate }));
+  assert.match(many, /ECONNREFUSED/);
+  assert.match(many, /ETIMEDOUT/);
+
+  // It must terminate and stay readable even on a self-referencing cause chain.
+  const loop = new Error('boom');
+  loop.cause = loop;
+  assert.equal(describeFetchError(loop), 'boom');
+});
+
+test('corpus: a download attempt is bounded by a timeout', async () => {
+  // Without one, a stalled connection makes a cold start look like a hang rather
+  // than a failure a user can act on.
+  const { DOWNLOAD_TIMEOUT_MS, fetchCorpus } = await load('cli/corpus.js');
+  assert.ok(DOWNLOAD_TIMEOUT_MS >= 30_000, 'a 25 MB asset needs a generous but finite budget');
+
+  let sawSignal = false;
+  const destDir = await (await import('node:fs/promises')).mkdtemp(
+    (await import('node:path')).join((await import('node:os')).tmpdir(), 'utcd-corpus-sig-'),
+  );
+  await assert.rejects(
+    () =>
+      fetchCorpus(
+        { corpusId: 'chictr_pancreatic', destDir, apply: true },
+        {
+          readManifest: async () => ({
+            corpora: {
+              chictr_pancreatic: {
+                url: 'https://example.invalid/c.tar.gz',
+                bytes: 10,
+                sha256: 'd'.repeat(64),
+                extractDir: 'chictr_pancreatic',
+                version: '1',
+                title: 't',
+              },
+            },
+          }),
+          fetchImpl: async (_url, init) => {
+            sawSignal = Boolean(init?.signal);
+            throw Object.assign(new TypeError('fetch failed'), { cause: new Error('simulated') });
+          },
+        },
+      ),
+    () => true,
+  );
+  assert.equal(sawSignal, true, 'every attempt must carry an abort signal');
+  await (await import('node:fs/promises')).rm(destDir, { recursive: true, force: true });
+});
+
+test('corpus: the download error surfaced to the user carries the cause', async () => {
+  // Guards the WIRING, not just the helper: it is easy to keep a good
+  // describeFetchError() and still ship `err.message` to the user.
+  const { fetchCorpus } = await load('cli/corpus.js');
+  const { mkdtemp, rm } = await import('node:fs/promises');
+  const os = await import('node:os');
+  const path = await import('node:path');
+
+  const destDir = await mkdtemp(path.join(os.tmpdir(), 'utcd-corpus-cause-'));
+  await assert.rejects(
+    () =>
+      fetchCorpus(
+        { corpusId: 'chictr_pancreatic', destDir, apply: true },
+        {
+          readManifest: async () => ({
+            corpora: {
+              chictr_pancreatic: {
+                url: 'https://example.invalid/c.tar.gz',
+                bytes: 10,
+                sha256: 'e'.repeat(64),
+                extractDir: 'chictr_pancreatic',
+                version: '1',
+                title: 't',
+              },
+            },
+          }),
+          fetchImpl: async () => {
+            throw Object.assign(new TypeError('fetch failed'), {
+              cause: new Error('Connect Timeout Error (attempted address: github.com:443, timeout: 10000ms)'),
+            });
+          },
+        },
+      ),
+    (error) => {
+      assert.equal(error.reasonCode, 'DOWNLOAD_FAILED');
+      assert.match(error.message, /github\.com:443/, 'the user-facing message must name the failing host');
+      assert.match(error.message, /Connect Timeout Error/);
+      assert.match(error.fixHint, /DNS|代理|网络策略/);
+      return true;
+    },
+  );
+  await rm(destDir, { recursive: true, force: true });
+});
