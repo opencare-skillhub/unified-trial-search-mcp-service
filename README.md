@@ -67,6 +67,36 @@ That single rule turns out to drive almost every design decision below.
 Together these cover the global registries, the Chinese registries, and the CDE drug-trial platform —
 including the **NMPA/ChinaDrugTrials investigator information** that no other MCP surfaces.
 
+### Getting the ChiCTR corpus
+
+The 468-record ChiCTR pancreatic corpus ships as a **release asset** (226 MB unpacked, 25 MB compressed),
+so a cold start does not require hunting for files:
+
+```bash
+# preview the URL, the expected size and the expected sha256 - downloads nothing
+unified-trial-mcp fetch-corpus
+
+# download, verify, extract and install atomically
+unified-trial-mcp fetch-corpus --apply
+
+# then mount it as a read-only source
+unified-trial-mcp configure --chictr-corpus ~/.unified-trial-mcp/corpora/chictr_pancreatic/chictr_pancreatic.db
+```
+
+Four rules this command follows:
+
+- **sha256 is the contract.** Every byte count and digest comes from `corpora/manifest.json`; a mismatch
+  fails the whole operation;
+- **A failed download never damages what you have.** The archive is fetched to a temp file, verified,
+  extracted to a temp directory, and only then swapped in. Verified by tampering with a single byte: the
+  install aborts with a checksum error and the previous corpus is byte-identical afterwards;
+- **Nothing is fetched that is not public.** This covers anonymously downloadable corpus data. Data behind a
+  credential or a challenge — the ChinaDrugTrials session, controlled archives — is still never fetched for
+  you (see ADR-006/ADR-008 in the spec);
+- **Use `--url` for a mirror.** `--url https://…` or `--url file:///…` handles intranets and air-gapped hosts.
+
+The corpus data remains ChiCTR's. This project only transports a public snapshot and indexes it read-only.
+
 ### Offline snapshots declare their own data cutoff
 
 The two offline sources are **snapshots**, not live data. Each reports its data cutoff explicitly, because a
@@ -226,6 +256,10 @@ node dist/src/cli/main.js configure \
 # 3) Explicit bootstrap (dry-run by default, prints a plan)
 node dist/src/cli/main.js bootstrap
 node dist/src/cli/main.js bootstrap --apply
+
+# 4) Fetch the public ChiCTR corpus (ADR-008); dry-run first, then --apply
+node dist/src/cli/main.js fetch-corpus
+node dist/src/cli/main.js fetch-corpus --apply
 
 # 4) Acquire the ChinaDrugTrials session (automatic; guides you if it fails)
 node dist/src/cli/main.js configure --cookie-from-entry-page

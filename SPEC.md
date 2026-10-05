@@ -147,16 +147,23 @@ unified-trial-mcp configure \
   --xyb-archive <absolute-output-dir> \
   --chictr-corpus <absolute-sqlite-path>
 
+# 获取公开发布的离线语料（ADR-008）；默认 dry-run，--apply 才下载
+unified-trial-mcp fetch-corpus --corpus chictr_pancreatic \
+  [--url <https URL | file:// 绝对路径>] [--dest <绝对目录>] \
+  [--apply] [--print-url] [--json]
+
 # ChinaDrugTrials 会话取得的两种显式方式（任选其一；doctor/bootstrap 绝不自动调用）
 unified-trial-mcp configure --cookie-from-entry-page [--cookie-check-keyword <关键词>]
 unified-trial-mcp configure --cookie-from-curl '<浏览器「复制为 cURL」的完整命令>'
 ```
 
-`doctor` 对 registry 的每个来源检查 Node/Python 版本、MCP/sidecar 可执行性、SQLite/归档 allowlisted 路径可读性、配置与索引/归档时间；只报告 ChinaDrugTrials 合法 Cookie 的“已配置/缺失/失效”状态，绝不显示其值；当该 Cookie 缺失或失效时，必须打印可复制的下一条取得命令（见 §4.1）。`bootstrap` 默认 `dry-run`，仅在 `--apply` 时安装 package 锁定版本的公开依赖、创建服务工作目录、初始化/校验本地资产；不得自动获取 Cookie、秘密或受控数据，不写入 Cookie、不启动交互式浏览器、不绕过 Cookie、robots、WAF 或验证码；缺 Cookie 时同样只打印引导命令。失败需逐来源汇总，已成功的来源保持可用。
+`doctor` 对 registry 的每个来源检查 Node/Python 版本、MCP/sidecar 可执行性、SQLite/归档 allowlisted 路径可读性、配置与索引/归档时间；只报告 ChinaDrugTrials 合法 Cookie 的“已配置/缺失/失效”状态，绝不显示其值；当该 Cookie 缺失或失效时，必须打印可复制的下一条取得命令（见 §4.1）。`bootstrap` 默认 `dry-run`，仅在 `--apply` 时安装 package 锁定版本的公开依赖、创建服务工作目录、初始化/校验本地资产；不得自动获取需要凭证、需绕过 robots/WAF/验证码、或需用户身份的数据（即 Cookie、秘密、受控归档），不写入 Cookie、不启动交互式浏览器；缺 Cookie 时同样只打印引导命令。**公开发布、可匿名下载的离线语料**按 ADR-008 由 `fetch-corpus` 步骤获取（同样默认 dry-run，`--apply` 才下载，且强制 sha256 校验）。失败需逐来源汇总，已成功的来源保持可用。
 
 **ChinaDrugTrials 会话取得（`configure --cookie-from-entry-page` / `--cookie-from-curl`）**：新环境必须能够自动获得该会话，或由服务明确引导用户手工配合获得，二者不得都缺失。`--cookie-from-entry-page` 发起**一次公开入口页 GET**，取用站点主动下发的匿名反爬票据（`FSSBBIl1UgzbN7N80S`/`...T`），随后以 `--cookie-check-keyword`（默认 `胰腺癌`）发起一次只读检索**实测校验**，通过后才写入 `<configDir>/cookie.env`（0600）。这是正常访问而非绕过：不解验证码、不破挑战、不规避限流、不使用登录凭证伪造。`--cookie-from-curl` 为人工兜底，从浏览器「复制为 cURL」中提取 Cookie。两者均为**显式一次性**命令，`doctor`/`bootstrap` 绝不调用；服务不读取其他项目的配置文件或浏览器 Profile。Cookie 优先级：真实环境变量 > `cookie.env`；缺失时视为未配置，绝不凭空产生凭证。
 
-离线包为外部只读资产，不作为需要另行部署的 MCP：用户通过 `configure` 挂载 `xyb-chinadrugtrials-data/output/` 和 `chictr_pancreatic.db`。ChinaDrugTrials 只有用户自行按来源条款提供合法会话后才可通过 MCP `sync_chinadrugtrials` 维护；未准备时必须报告 `NEEDS_SETUP`，不得阻断其余来源。
+离线包为外部只读资产，不作为需要另行部署的 MCP：用户通过 `configure` 挂载 `xyb-chinadrugtrials-data/output/` 和 `chictr_pancreatic.db`。
+
+**公开离线语料获取（`fetch-corpus`，ADR-008）**：ChiCTR 胰腺癌语料（`chictr_pancreatic.db` + `pancreatic_trials.json` + `html/`）由本仓库 GitHub Release 发布 tar.gz，`fetch-corpus --corpus chictr_pancreatic --apply` 负责下载、校验、解压并原子替换到目标目录。约束：①默认 dry-run，打印将访问的 URL、预期字节数与 sha256，`--apply` 才实际写入；②必须校验 sha256 与字节数，不匹配即失败并**保留原有数据完全不动**；③解压到临时目录、校验通过后才原子替换，绝不就地解压覆盖；④支持重试以应对网络中断，但重试不改变校验要求；⑤`--url` 可指向镜像或 `file://` 本地路径以支持内网；⑥该命令不是 MCP 工具，查询工具绝不隐式触发下载。XYB 归档目前不提供自动获取，仍由用户 `configure` 手工挂载。ChinaDrugTrials 只有用户自行按来源条款提供合法会话后才可通过 MCP `sync_chinadrugtrials` 维护；未准备时必须报告 `NEEDS_SETUP`，不得阻断其余来源。
 
 ### 4.2 `search_trials`
 
@@ -489,7 +496,8 @@ interface TrialSourceAdapter {
 4. 实现三个 MCP adapter（ICTRP、CTV、ChiCTR online）及两个只读 SQLite/archive adapter。
 5. 实现 ChinaDrugTrials/XYB archive、详情与证据查询，并建立路径 allowlist。
 6. 实现三个显式维护 adapter/工具与操作日志。
-7. 完整测试、安装/配置文档和来源/数据合规操作手册。
+7. 实现 `fetch-corpus`（ADR-008）与配套 `scripts/pack-corpus.mjs`：打包脚本产出 tar.gz + sha256 清单，CLI 负责下载/校验/原子替换，`bootstrap` 接入为可选步骤。
+8. 完整测试、安装/配置文档和来源/数据合规操作手册。
 
 阶段完成顺序不意味着可跳过测试；每阶段仅在上一步测试通过后进入。
 
@@ -535,7 +543,7 @@ interface TrialSourceAdapter {
 - **决定**：MCP Client 只注册 `unified-trial-mcp`；通过 CLI `doctor` 诊断、显式 `bootstrap --apply` 批量准备公开依赖/本地资产、`configure` 只读挂载离线包，并以 `configure --cookie-from-entry-page`（自动，一次公开入口页 GET + 只读实测校验）或 `configure --cookie-from-curl`（人工兜底）取得 ChinaDrugTrials 会话。
 - **理由**：用户不应手动部署并注册多个异构 MCP；显式 bootstrap 让下载、安装和本地初始化的副作用可预览、可审计、可失败恢复。会话取得同样必须显式、一次性、可校验，否则新环境要么无法使用该来源，要么只能依赖用户自行摸索。
 - **替代方案**：安装时自动初始化（副作用和失败面大）；完全手工部署所有子服务（门槛高）；运行时按需隐式安装（不可预测）；`doctor`/`bootstrap` 自动取 Cookie（会把「一次公开访问」滑向「自动对抗封禁」，故排除）。
-- **后果**：需维护锁定版本、幂等步骤、来源级诊断和清晰退出码；会话写入独立的 `cookie.env`（0600）而非 JSON 配置，保证配置文件始终无秘密；`doctor`/`bootstrap` 只引导不获取，且在诊断中必须给出确切的下一条命令。
+- **后果**：需维护锁定版本、幂等步骤、来源级诊断和清晰退出码；会话写入独立的 `cookie.env`（0600）而非 JSON 配置，保证配置文件始终无秘密；`doctor`/`bootstrap` 只引导不获取，且在诊断中必须给出确切的下一条命令。注意：本 ADR 的“不代为获取”特指**需要凭证、需要绕过 robots/WAF/验证码、或需要用户身份的数据**；公开发布且可匿名下载的离线语料按 ADR-008 处理。
 
 ### ADR-007：公开 PII 默认不脱敏，但强制可追溯与秘密隔离
 
@@ -543,6 +551,23 @@ interface TrialSourceAdapter {
 - **理由**：满足既定使用偏好，同时避免“公开”被误认为没有再分发/审计责任。
 - **替代方案**：默认脱敏；只有受控 evidence 返回。
 - **后果**：调用方必须承担来源条款和适用数据法规遵从；测试必须验证秘密永不泄露。
+
+### ADR-008：离线语料可经显式命令从固定 Release 获取
+
+- **背景**：ADR-006 声明 bootstrap“绝不代替用户下载或分发第三方数据”。但 ChiCTR 胰腺癌语料（226 MB，压缩后 24.6 MB）若要求每个新环境用户手工寻找、下载、解压、再 `configure`，冷启动门槛过高，实践中会导致该来源在多数部署里永远不可用。这两个目标需要一条明确边界，而不是含糊妥协。
+- **决定**：
+  1. **边界按“是否需要突破访问控制”划分，而非按“是否联网”划分。** ADR-006 的禁令精确含义是：不代替用户获取需要凭证、需要绕过 robots/WAF/验证码、或需要用户身份的数据（ChinaDrugTrials 会话 Cookie、受控归档）。**公开发布、可匿名下载的语料**不在此列，可由本服务代为获取。
+  2. 语料获取是**独立子命令** `fetch-corpus`，并作为 `bootstrap` 的一个步骤出现；它不被任何查询工具隐式触发，MCP 工具面（SPEC 第 4 节 7 个工具）完全不涉及下载。
+  3. 内置默认 URL 指向本仓库的 GitHub Release；用户可用 `--url` 覆盖为镜像或本地文件路径（`file://`），以支持内网/离线机房。
+  4. **完整性不可协商**：必须校验 sha256 与预期字节数，不匹配即失败并**保留原有数据不动**；解压到临时目录、校验通过后才原子替换目标目录，绝不就地解压覆盖。
+  5. **可复现**：`scripts/pack-corpus.mjs` 生成 tar 包，同时输出 sha256 与尺寸清单；该清单随仓库提交，`fetch-corpus` 用它校验。
+- **理由**：把“自动获取”限定在开放、可匿名、可校验的数据上，既保住了 ADR-006 真正想守住的底线（不代取凭证、不绕过防护），又让冷启动一次命令可达。sha256 + 原子替换保证“下载失败”永远表现为“维持原状”，而不是“半损坏的语料”。
+- **替代方案**：随 npm 包分发（包体积和每次更新成本不可接受）；只给文档让用户手工处理（冷启动门槛过高，ADR-006 现状）；运行查询时按需隐式下载（不可预测、不可审计，且违反查询只读原则）。
+- **后果**：
+  - ADR-006 的措辞需相应收窄为“不代取需凭证/需突破防护的数据”，本 ADR 是其补充而非废止；两者共同构成完整规则。
+  - 需维护 Release 资产与 sha256 清单的一致性；发布新语料时必须同步更新清单，否则 `fetch-corpus` 会拒绝。
+  - README/文档必须标注语料来源、上游许可与再分发责任，用户可自行用 `--url` 指向自建镜像。
+  - 下载过程需可中断恢复（重试）、可诊断（`doctor` 报告语料是否就绪、来源 URL、校验结果）。
 
 ## 12. 已知风险与缓解
 
@@ -552,6 +577,8 @@ interface TrialSourceAdapter {
 | ChiCTR WAF/短 Cookie/高依赖体积 | 在线查询不可用或脆弱 | 独立 adapter、挑战终态、离线胰腺癌 corpus 回退；不绕过 WAF |
 | ChinaDrugTrials Cookie/网页变动 | 同步失败或解析漂移 | 合规 session、显式维护、重试/延迟、raw HTML + sections + hash 审计 |
 | 本地离线归档过期/时间异常 | 时效错误；把"快照没收录"误读为"试验不存在" | `freshness.dataCutoff` + `cutoffSource` + `updateHint` 三者齐备并在 `search_trials`/`get_source_status` 同时可见；截止日由数据推导不得硬编码；记录跨度大时显式 warning；future timestamp/不一致警告 |
+| 语料 Release 资产与仓库中的 sha256 清单不一致 | 新环境冷启动下载被拒，或（若跳过校验）装入损坏/被替换的语料 | `fetch-corpus` 强制校验 sha256 + 字节数，不匹配即失败并保留原有数据；打包脚本与清单同一次提交更新；CI 校验清单格式与资产可下载性 |
+| 自动下载被视为本服务再分发第三方数据 | 许可与合规风险 | ADR-008 边界：只自动获取公开可匿名下载的语料；README/文档标注来源与许可；用户可 `--url` 指向自建镜像；`fetch-corpus` 打印来源 URL 与校验值供审计 |
 | 离线快照无人更新 | 快照逐渐失效 | 明示社区共同维护、报告截止日与更新命令（`configure --xyb-archive` / `configure --chictr-corpus`）、`doctor` 输出可见；`staleAfterDays` 超期提示 |
 | 多来源重复/冲突 | 错误合并 | source 原始身份、可靠 ID 合并、保留 `overlaps`/`perSource` |
 | PII/原始证据再分发 | 合规/隐私风险 | 来源标记、访问日志、allowlist、秘密隔离、操作手册 |

@@ -77,7 +77,8 @@ export async function runBootstrap(options: BootstrapOptions): Promise<Bootstrap
   steps.push(await ensureDir(paths.configDir, apply));
   steps.push(await ensureDir(paths.workDir, apply));
 
-  // 2. Offline corpus / archive assets: verify readability and never fetch data.
+  // 2. Offline corpus / archive assets: verify readability; fetch only what is
+  //    public (ADR-008), never anything behind a credential or a challenge.
   const offline: Array<[SourceId, string | undefined, 'file' | 'dir', string]> = [
     ['chictr_pancreatic_archive', paths.chictrCorpus, 'file', 'ChiCTR 胰腺癌离线语料（SQLite）'],
     ['xyb_chinadrugtrials_archive', paths.xybArchive, 'dir', '小胰宝 ChinaDrugTrials 归档目录'],
@@ -86,12 +87,21 @@ export async function runBootstrap(options: BootstrapOptions): Promise<Bootstrap
   for (const [sourceId, target, kind, label] of offline) {
     if (!include(sourceId)) continue;
     if (!target) {
+      // The ChiCTR corpus is published as a release asset, so a cold start can
+      // obtain it without hunting for files. Everything else still has to be
+      // mounted by hand: XYB and the ChinaDrugTrials archive are not ours to
+      // redistribute, and ADR-006's line on credentialed data has not moved.
+      const fetchable = sourceId === 'chictr_pancreatic_archive';
       steps.push({
         sourceId,
         status: 'manual',
         action: `${label}未配置`,
-        detail: '该来源需要人工提供的本地数据；bootstrap 不会代为下载或抓取。',
-        command: `unified-trial-mcp configure --${sourceId === 'chictr_pancreatic_archive' ? 'chictr-corpus' : sourceId === 'xyb_chinadrugtrials_archive' ? 'xyb-archive' : 'chinadrugtrials-archive'} <绝对路径>`,
+        detail: fetchable
+          ? '该来源可从公开发布的语料包获取（ADR-008）：bootstrap --apply 会下载、校验 sha256 并原子替换；也可用 --url 指向镜像或本地 tar.gz。'
+          : '该来源需要人工提供的本地数据；bootstrap 不会代为下载或抓取。',
+        command: fetchable
+          ? `unified-trial-mcp fetch-corpus --corpus chictr_pancreatic --apply --dest <绝对目录>`
+          : `unified-trial-mcp configure --${sourceId === 'xyb_chinadrugtrials_archive' ? 'xyb-archive' : 'chinadrugtrials-archive'} <绝对路径>`,
       });
       continue;
     }

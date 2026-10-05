@@ -22,6 +22,13 @@ import { promises as fs, realpathSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 
 import { CONFIG_FILE_NAME, defaultConfigDir, loadConfig, type PathConfig } from '../core/config.js';
+import {
+  CorpusError,
+  DEFAULT_CORPUS_ID,
+  fetchCorpus,
+  readManifest,
+  resolveEntry,
+} from './corpus.js';
 import { formatCutoff } from '../core/cutoff.js';
 import { createAdapters } from '../adapters/index.js';
 import { Orchestrator } from '../core/orchestrator.js';
@@ -282,6 +289,64 @@ async function commandBootstrap(flags: Map<string, string | boolean>): Promise<n
   return code;
 }
 
+/**
+ * `fetch-corpus` (SPEC 4.1 / ADR-008): retrieve a publicly released offline
+ * corpus.
+ *
+ * This is the one place the service is allowed to download data on the user's
+ * behalf, and only because the asset is public, anonymous and checksum-verified.
+ * It never fetches anything behind a credential or a challenge - that is still
+ * ADR-006's line, and it has not moved.
+ */
+async function commandFetchCorpus(flags: Map<string, string | boolean>): Promise<number> {
+  const json = flagBool(flags, 'json');
+  const apply = flagBool(flags, 'apply');
+  const corpusId = flagString(flags, 'corpus');
+  const urlOverride = flagString(flags, 'url');
+  const destDir = flagString(flags, 'dest');
+
+  try {
+    if (flagBool(flags, 'print-url')) {
+      const manifest = await readManifest();
+      const entry = resolveEntry(manifest, corpusId ?? DEFAULT_CORPUS_ID);
+      process.stdout.write(`${urlOverride ?? entry.url}\n`);
+      return 0;
+    }
+
+    const result = await fetchCorpus({ corpusId, urlOverride, destDir, apply });
+
+    if (json) {
+      process.stdout.write(`${JSON.stringify(result, null, 2)}\n`);
+      return 0;
+    }
+
+    for (const step of result.steps) process.stdout.write(`${step}\n`);
+    if (!result.applied) {
+      process.stdout.write(
+        `\n这是 dry run，未下载任何内容。确认无误后执行：\n  unified-trial-mcp fetch-corpus --corpus ${result.corpusId} --apply\n`,
+      );
+      return 0;
+    }
+    process.stdout.write(
+      `\n语料已就绪：${result.dbPath}\n` +
+        `下一步把它挂载为只读来源：\n  unified-trial-mcp configure --chictr-corpus ${result.dbPath}\n`,
+    );
+    return 0;
+  } catch (error) {
+    if (error instanceof CorpusError) {
+      process.stderr.write(`错误：${error.message}\n`);
+      if (error.fixHint) process.stderr.write(`提示：${error.fixHint}\n`);
+      if (json) {
+        process.stderr.write(
+          `${JSON.stringify({ reasonCode: error.reasonCode, message: error.message }, null, 2)}\n`,
+        );
+      }
+      return 1;
+    }
+    throw error;
+  }
+}
+
 async function commandConfigure(flags: Map<string, string | boolean>): Promise<number> {
   const overrides = buildConfigOverrides(flags);
   const json = flagBool(flags, 'json');
@@ -410,6 +475,8 @@ function usage(): void {
       '                                                初始化缺失依赖；默认 dry run',
       '  unified-trial-mcp configure --xyb-archive <目录> --chictr-corpus <文件> ...',
       '                                                写入绝对路径配置',
+      '  unified-trial-mcp fetch-corpus [--corpus <id>] [--url <url>] [--dest <目录>] [--apply] [--print-url] [--json]',
+      '                                                获取公开发布的离线语料；默认 dry run，--apply 才下载并校验',
       '  unified-trial-mcp configure --cookie-from-entry-page',
       '                                                自动获取 ChinaDrugTrials 会话 Cookie（一次公开入口页访问）',
       "  unified-trial-mcp configure --cookie-from-curl '<cURL>'",
@@ -424,6 +491,8 @@ function usage(): void {
       '  --cookie-check-keyword <关键词>  校验 Cookie 时使用的只读检索词（默认 胰腺癌）',
       '',
       `配置文件：$UNIFIED_TRIAL_CONFIG_DIR 或 ${defaultConfigDir()}/${CONFIG_FILE_NAME}`,
+      '离线语料：fetch-corpus 只获取公开发布、可匿名下载的语料，强制 sha256 校验，',
+      '         失败时保留原有数据不动；需要凭证或需绕过防护的数据绝不自动获取。',
       'Cookie：存放在 <配置目录>/cookie.env（权限 0600），由 configure 显式写入并校验；',
       '        doctor/bootstrap 只引导、绝不自动获取，也不绕过验证码或 WAF。',
       '',
@@ -442,6 +511,8 @@ export async function main(argv: string[]): Promise<number> {
       return commandBootstrap(flags);
     case 'configure':
       return commandConfigure(flags);
+    case 'fetch-corpus':
+      return commandFetchCorpus(flags);
     case 'help':
     case '--help':
     case '-h':

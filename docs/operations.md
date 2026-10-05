@@ -78,8 +78,19 @@ FG-M108（缺少 summary.json 清单，视为未完成的采集快照）。这�
 
 | 症状 | 处置 |
 |---|---|
-| `CORPUS_NOT_CONFIGURED` | `configure --chictr-corpus /abs/path/chictr_pancreatic.db` |
+| `CORPUS_NOT_CONFIGURED` | 先取语料：`fetch-corpus`（预览）→ `fetch-corpus --apply`（下载安装）；或手工准备后 `configure --chictr-corpus /abs/path/chictr_pancreatic.db` |
 | `PATH_*` 系列 | 检查路径存在、是文件、可读、且在 allowlist 内 |
+| `SHA256_MISMATCH` / `SIZE_MISMATCH` | 下载内容与 `corpora/manifest.json` 不符。**原有语料未被改动**。重试；若持续失败，说明资产已被替换，需用 `scripts/pack-corpus.mjs --write-manifest` 重新生成清单 |
+| `DOWNLOAD_FAILED` / `DOWNLOAD_HTTP_ERROR` | 默认 Release 不可达或资产未上传。用 `--url` 指向镜像或 `file://` 本地 tar.gz |
+| `CORPUS_NOT_IN_MANIFEST` | 该语料尚未发布或清单为空；运行打包脚本并上传 Release 后再试 |
+| `TAR_UNAVAILABLE` / `TAR_FAILED` | 目标机缺少可用 `tar`，或归档损坏（后者通常已被 sha256 拦下） |
+
+**获取语料（ADR-008）**：`fetch-corpus` 默认 dry run，只打印将访问的 URL、预期字节数与 sha256；
+`--apply` 才下载。流程为：下载到临时文件 → 校验字节数 → 校验 sha256 → 解压到临时目录 → 校验内容 →
+**原子替换**目标目录。任何一步失败都会保留原有数据完全不动，并清理临时目录。
+`--url` 支持镜像与 `file://`；`--dest` 指定安装根目录（默认 `~/.unified-trial-mcp/corpora`）。
+这是本服务唯一会代替用户下载数据的地方，且只限**公开发布、可匿名下载**的语料；
+需要凭证或需突破 robots/WAF/验证码的数据依然绝不代取。
 
 该来源为 `READ_ONLY_ARCHIVE`，`maintain()` 直接抛 `NOT_ENABLED`。
 检索范围仅限**胰腺癌专题**，结果会带范围警告；`freshness.staleAfterDays = 90`。

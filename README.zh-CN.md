@@ -68,6 +68,32 @@
 | `chinadrugtrials` | ChinaDrugTrials | 受控抓取 | **含研究者（PI）信息** |
 | `xyb_chinadrugtrials_archive` | 小胰宝归档 | 离线数据包 | 139 条胰腺癌记录，结构化章节，**数据截止 2026-09-28** |
 
+### 获取 ChiCTR 离线语料
+
+468 条胰腺癌语料以 **Release 资产**发布（解压后 226 MB，压缩后 25 MB），冷启动不必再四处找文件：
+
+```bash
+# 预览将访问的 URL、预期大小与 sha256 —— 不下载任何内容
+unified-trial-mcp fetch-corpus
+
+# 下载、校验、解压并原子替换
+unified-trial-mcp fetch-corpus --apply
+
+# 再挂载为只读来源
+unified-trial-mcp configure --chictr-corpus ~/.unified-trial-mcp/corpora/chictr_pancreatic/chictr_pancreatic.db
+```
+
+这条命令遵守四条规则：
+
+- **sha256 就是契约。** 字节数与摘要全部来自 `corpora/manifest.json`，任何一项不符即整体失败；
+- **下载失败绝不损坏你已有的数据。** 先下到临时文件、校验、解压到临时目录，确认无误才替换。已实测：
+  篡改 1 个字节后安装中止并报校验错误，原有语料逐字节不变；
+- **不公开的东西绝不代取。** 这条命令只覆盖可匿名下载的语料。需要凭证或需突破防护的数据
+  （ChinaDrugTrials 会话、受控归档）依然绝不代替用户获取（见规范 ADR-006 / ADR-008）；
+- **镜像用 `--url`。** 支持 `https://…` 与 `file:///…`，适配内网与离线机房。
+
+语料数据版权归 ChiCTR 所有，本项目只搬运公开快照并做只读索引。
+
 ### 离线快照会声明自己的数据截止日
 
 两个离线来源是**快照**，不是实时数据。它们会明确报告自己的数据截止日，因为截止日之后登记的试验是
@@ -222,6 +248,10 @@ node dist/src/cli/main.js configure \
 # 3) 显式初始化（默认 dry-run，只打印计划）
 node dist/src/cli/main.js bootstrap
 node dist/src/cli/main.js bootstrap --apply
+
+# 4) 获取公开发布的 ChiCTR 语料（ADR-008）；先 dry run，再 --apply
+node dist/src/cli/main.js fetch-corpus
+node dist/src/cli/main.js fetch-corpus --apply
 
 # 4) 取得 ChinaDrugTrials 会话（全自动；失败会引导人工兜底）
 node dist/src/cli/main.js configure --cookie-from-entry-page

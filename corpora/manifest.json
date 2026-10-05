@@ -1,0 +1,23 @@
+{
+  "$comment": [
+    "Offline corpus release assets, verified by `fetch-corpus` (ADR-008).",
+    "`bytes` and `sha256` here are the contract: a download that does not match",
+    "them is rejected and any existing data is left untouched.",
+    "",
+    "Regenerate with:",
+    "  node scripts/pack-corpus.mjs --corpus chictr_pancreatic --source <data-dir> --write-manifest",
+    "then upload the tar.gz to the GitHub Release named in `url` and commit this file.",
+    "Never edit sha256 by hand."
+  ],
+  "corpora": {
+    "chictr_pancreatic": {
+      "url": "https://github.com/opencare-skillhub/unified-trial-search-mcp-service/releases/download/chictr_pancreatic-2026-10-05/chictr_pancreatic.tar.gz",
+      "bytes": 25381264,
+      "sha256": "abbfc53ba346741be418c143f67a53ea83bb47114495bdb1a0d05ccb539f78af",
+      "extractDir": "chictr_pancreatic",
+      "version": "2026-10-05",
+      "title": "ChiCTR 胰腺癌离线语料",
+      "note": "ChiCTR 公开登记信息离线快照；数据版权归 ChiCTR，本服务仅作搬运与只读索引。"
+    }
+  }
+}

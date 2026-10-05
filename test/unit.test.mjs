@@ -336,3 +336,190 @@ test('cli: a symlinked entry still runs the program', async () => {
   assert.ok(out.length > 50, 'the CLI must do real work, not exit silently');
   assert.ok(ROOT.length > 0);
 });
+
+test('corpus: a checksum mismatch is fatal and leaves the installed corpus untouched', async () => {
+  // The whole point of ADR-008's verification step: a bad download must never
+  // replace working data. A truncated file, a swapped asset or a corrupted
+  // transfer all have to end as "previous corpus still intact", not as a
+  // half-written directory that silently returns wrong search results.
+  const { fetchCorpus, CorpusError } = await load('cli/corpus.js');
+  const { mkdtemp, mkdir, writeFile, readFile, rm } = await import('node:fs/promises');
+  const os = await import('node:os');
+  const path = await import('node:path');
+
+  const root = await mkdtemp(path.join(os.tmpdir(), 'utcd-corpus-'));
+  const destDir = path.join(root, 'corpora');
+  const corpusDir = path.join(destDir, 'chictr_pancreatic');
+  await mkdir(corpusDir, { recursive: true });
+  await writeFile(path.join(corpusDir, 'chictr_pancreatic.db'), 'ORIGINAL DATA');
+
+  const entry = {
+    url: 'https://example.invalid/corpus.tar.gz',
+    bytes: 4,
+    sha256: 'a'.repeat(64),
+    extractDir: 'chictr_pancreatic',
+    version: '2026-01-01',
+    title: 'test corpus',
+  };
+
+  let tarCalled = false;
+  await assert.rejects(
+    () =>
+      fetchCorpus(
+        { corpusId: 'chictr_pancreatic', destDir, apply: true },
+        {
+          readManifest: async () => ({ corpora: { chictr_pancreatic: entry } }),
+          // Every download "succeeds" with the wrong content.
+          fetchImpl: async () =>
+            new Response(new Uint8Array([1, 2, 3, 4]), { status: 200 }),
+          runTar: async () => {
+            tarCalled = true;
+          },
+        },
+      ),
+    (error) => {
+      assert.ok(error instanceof CorpusError, `expected CorpusError, got ${error}`);
+      assert.equal(error.reasonCode, 'SHA256_MISMATCH');
+      // The message must say what was preserved, not just that it failed.
+      assert.match(error.fixHint ?? '', /保留原有数据/);
+      return true;
+    },
+  );
+
+  assert.equal(tarCalled, false, 'nothing may be extracted before the checksum passes');
+  assert.equal(
+    await readFile(path.join(corpusDir, 'chictr_pancreatic.db'), 'utf8'),
+    'ORIGINAL DATA',
+    'the installed corpus must survive a failed download',
+  );
+  const leftover = await (await import('node:fs/promises')).readdir(destDir);
+  assert.deepEqual(leftover, ['chictr_pancreatic'], 'no staging directory may be left behind');
+  await rm(root, { recursive: true, force: true });
+});
+
+test('corpus: a size mismatch is caught before hashing', async () => {
+  const { fetchCorpus } = await load('cli/corpus.js');
+  const { mkdtemp, rm } = await import('node:fs/promises');
+  const os = await import('node:os');
+  const path = await import('node:path');
+
+  const destDir = await mkdtemp(path.join(os.tmpdir(), 'utcd-corpus-size-'));
+  let hashed = false;
+  await assert.rejects(
+    () =>
+      fetchCorpus(
+        { corpusId: 'chictr_pancreatic', destDir, apply: true },
+        {
+          readManifest: async () => ({
+            corpora: {
+              chictr_pancreatic: {
+                url: 'https://example.invalid/c.tar.gz',
+                bytes: 999,
+                sha256: 'b'.repeat(64),
+                extractDir: 'chictr_pancreatic',
+                version: '1',
+                title: 't',
+              },
+            },
+          }),
+          // A truncated transfer: fewer bytes than the manifest promises.
+          fetchImpl: async () => new Response(new Uint8Array([1, 2, 3]), { status: 200 }),
+          sha256File: async () => {
+            hashed = true;
+            return 'b'.repeat(64);
+          },
+        },
+      ),
+    (error) => {
+      assert.equal(error.reasonCode, 'SIZE_MISMATCH');
+      return true;
+    },
+  );
+  assert.equal(hashed, false, 'a truncated download should be rejected without hashing');
+  await rm(destDir, { recursive: true, force: true });
+});
+
+test('corpus: a dry run touches neither the network nor the disk', async () => {
+  // bootstrap defaults to a dry run; fetch-corpus must behave the same way, or
+  // "preview what will happen" becomes a 25 MB surprise.
+  const { fetchCorpus } = await load('cli/corpus.js');
+  const { mkdtemp, readdir, rm } = await import('node:fs/promises');
+  const os = await import('node:os');
+  const path = await import('node:path');
+
+  const destDir = await mkdtemp(path.join(os.tmpdir(), 'utcd-corpus-dry-'));
+  let fetched = false;
+  const result = await fetchCorpus(
+    { corpusId: 'chictr_pancreatic', destDir, apply: false },
+    {
+      readManifest: async () => ({
+        corpora: {
+          chictr_pancreatic: {
+            url: 'https://example.invalid/c.tar.gz',
+            bytes: 123,
+            sha256: 'c'.repeat(64),
+            extractDir: 'chictr_pancreatic',
+            version: '1',
+            title: 't',
+          },
+        },
+      }),
+      fetchImpl: async () => {
+        fetched = true;
+        return new Response('nope');
+      },
+    },
+  );
+
+  assert.equal(fetched, false, 'a dry run must not download anything');
+  assert.equal(result.applied, false);
+  // The preview still has to show what WOULD be fetched, or it is useless.
+  assert.equal(result.bytes, 123);
+  assert.equal(result.sha256, 'c'.repeat(64));
+  assert.match(result.url, /^https:\/\//);
+  assert.deepEqual(await readdir(destDir), [], 'a dry run must not create files');
+  await rm(destDir, { recursive: true, force: true });
+});
+
+test('corpus: a corpus missing from the manifest fails with a usable hint', async () => {
+  const { fetchCorpus } = await load('cli/corpus.js');
+  await assert.rejects(
+    () => fetchCorpus({ corpusId: 'nope', apply: false }, { readManifest: async () => ({ corpora: {} }) }),
+    (error) => {
+      assert.equal(error.reasonCode, 'CORPUS_NOT_IN_MANIFEST');
+      assert.match(error.fixHint, /pack-corpus\.mjs/);
+      return true;
+    },
+  );
+});
+
+test('corpus: the manifest and the packer agree on what a corpus is', async () => {
+  // The manifest is generated by scripts/pack-corpus.mjs and consumed by
+  // src/cli/corpus.ts. If they disagree about the corpus id or the extracted
+  // directory layout, `configure --chictr-corpus` points at a path that will not
+  // exist - a failure that only surfaces on a user's first cold start.
+  const { readFile } = await import('node:fs/promises');
+  const path = await import('node:path');
+  const { ROOT } = await import('./helpers.mjs');
+
+  const packer = await readFile(path.join(ROOT, 'scripts', 'pack-corpus.mjs'), 'utf8');
+  const manifest = JSON.parse(await readFile(path.join(ROOT, 'corpora', 'manifest.json'), 'utf8'));
+
+  for (const corpusId of Object.keys(manifest.corpora)) {
+    assert.ok(
+      packer.includes(`${corpusId}: {`),
+      `pack-corpus.mjs must declare the corpus "${corpusId}" that the manifest publishes`,
+    );
+  }
+
+  const entry = manifest.corpora.chictr_pancreatic;
+  if (entry) {
+    // The adapter opens <corpusDir>/chictr_pancreatic.db; corpus.ts builds that
+    // path from extractDir, so a mismatch installs a corpus nothing can read.
+    assert.equal(entry.extractDir, 'chictr_pancreatic');
+    assert.ok(entry.bytes > 0 && /^[0-9a-f]{64}$/.test(entry.sha256), 'a published entry needs a real digest');
+    assert.match(entry.url, /^https:\/\/github\.com\//);
+    // A url that does not carry the filename makes a 404 look like a network fault.
+    assert.ok(entry.url.endsWith('chictr_pancreatic.tar.gz'), 'the release asset name must match');
+  }
+});
