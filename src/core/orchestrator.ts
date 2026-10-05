@@ -177,6 +177,14 @@ export class Orchestrator {
         return;
       }
 
+      // Re-check against the clock here too: a worker can be between the loop
+      // check and this point, and `sourceStart` was captured before the adapter
+      // lookup. Both paths must agree on what "too late" means.
+      if (deadlinePassed() && !run.result) {
+        run.conclusion = baseConclusion(descriptor, 'NOT_QUERIED', 'OVERALL_DEADLINE', '总 deadline 已到，未启动该来源。');
+        return;
+      }
+
       const remaining = deadlineMs - (now() - startedMs);
       if (remaining <= 0) {
         run.conclusion = baseConclusion(descriptor, 'NOT_QUERIED', 'OVERALL_DEADLINE', '总 deadline 已到，未启动该来源。');
@@ -244,9 +252,27 @@ export class Orchestrator {
     };
 
     const queue = [...scheduled];
+
+    /**
+     * Has the global deadline passed?
+     *
+     * Checked as a CLOCK CONDITION rather than only through `signal.aborted`,
+     * because the two are not the same instant. `deadlinePromise` polls every
+     * 25ms and can win the race below up to 25ms before `controller.abort()`
+     * runs; a worker whose source was interrupted by its OWN source timeout
+     * returns to this loop in that window with `signal.aborted` still false.
+     * Reading the clock directly closes it.
+     *
+     * This is a belt-and-braces guard: `runSource` independently refuses to start
+     * when no time remains, so a late dequeue cannot on its own reach an adapter.
+     * Both checks exist because either one alone leaves the ordering to chance.
+     */
+    const deadlinePassed = (): boolean =>
+      controller.signal.aborted || now() - startedMs >= deadlineMs;
+
     const worker = async (): Promise<void> => {
       for (;;) {
-        if (controller.signal.aborted) return;
+        if (deadlinePassed()) return;
         const next = queue.shift();
         if (!next) return;
         await runSource(next);

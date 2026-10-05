@@ -229,9 +229,12 @@ test('cutoff: the archive cutoff is derived from evidence, never hardcoded', asy
   assert.equal(formatCutoff('2026-10-04T22:31:31+08:00'), '2026-10-04');
   assert.equal(formatCutoff('2026-09-28T07:59:24-05:00'), '2026-09-28');
   assert.equal(formatCutoff('2026-09-28T12:00:00Z'), '2026-09-28');
-  // A timestamp with no offset is read as UTC by Date.parse, so it must render
-  // as UTC: 07:59Z really is the 27th, and pretending otherwise would be worse.
-  assert.equal(formatCutoff('2026-09-28T07:59:24.275394'), '2026-09-27');
+  // A timestamp with no offset must NOT be forced through a timezone it never
+  // claimed. ECMAScript parses a `T` form as LOCAL time, so the date rendered is
+  // the one the producer wrote, whatever the host timezone is - asserting a
+  // fixed string here is what broke CI, where the runner is UTC and macOS is not.
+  assert.equal(formatCutoff('2026-09-28T07:59:24.275394'), '2026-09-28');
+  assert.equal(formatCutoff('2026-09-28T23:30:00'), '2026-09-28');
   // The rendering must be pure arithmetic, never an ICU time-zone lookup:
   // `Etc/GMT-8` resolved locally but not in CI, and `UTC+08:00` is rejected
   // everywhere. This asserts the offset maths directly so a future refactor back
@@ -240,6 +243,11 @@ test('cutoff: the archive cutoff is derived from evidence, never hardcoded', asy
   assert.equal(offsetMinutesOf('2026-09-28T07:59:24-05:00'), -300);
   assert.equal(offsetMinutesOf('2026-09-28T12:00:00Z'), 0);
   assert.equal(offsetMinutesOf('2026-09-28T07:59:24.275394'), undefined);
+  // Offset-bearing stamps must render identically regardless of the host zone:
+  // that is the property CI actually broke, and it is what makes the number
+  // comparable across machines.
+  assert.equal(formatCutoff('2026-09-28T23:30:00-05:00'), '2026-09-28');
+  assert.equal(formatCutoff('2026-09-29T00:30:00+05:30'), '2026-09-29');
   // A half-hour offset must land on the right date too.
   assert.equal(formatCutoff('2026-01-01T00:30:00+05:30'), '2026-01-01');
 

@@ -168,7 +168,14 @@ test('orchestrator: concurrency never exceeds the configured pool', async () => 
       await new Promise((r) => setTimeout(r, 15));
       return { records: records(1, id) };
     }));
-  const orch = build(adapters, { OrchestratorModule: { Orchestrator }, concurrency: 2 });
+  // A deadline well above the work (6 sources / 2 workers / 15ms each ~= 50ms)
+  // keeps this test about concurrency: with the default 75s deadline a stalled
+  // event loop can otherwise turn a scheduling hiccup into a very long wait.
+  const orch = build(adapters, {
+    OrchestratorModule: { Orchestrator },
+    concurrency: 2,
+    globalDeadlineMs: 5000,
+  });
   await orch.search({ keyword: 'x' });
   const peak = Math.max(...adapters.map((a) => a.state.maxConcurrent));
   assert.ok(peak <= 2, `concurrency must be capped, saw ${peak}`);

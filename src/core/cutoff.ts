@@ -44,14 +44,18 @@ export function formatCutoff(value: string | undefined): string {
   if (!value) return '未知';
   const ms = Date.parse(value);
   if (Number.isNaN(ms)) return value;
-  const offset = offsetMinutesOf(value) ?? 0;
-  // A timestamp with no explicit offset is read as UTC by Date.parse, so it is
-  // reported as UTC: 07:59Z really is the 27th.
-  const shifted = new Date(ms + offset * 60_000);
-  const year = shifted.getUTCFullYear();
-  const month = String(shifted.getUTCMonth() + 1).padStart(2, '0');
-  const day = String(shifted.getUTCDate()).padStart(2, '0');
-  return `${year}-${month}-${day}`;
+  const offset = offsetMinutesOf(value);
+  const shifted = offset === undefined ? new Date(ms) : new Date(ms + offset * 60_000);
+  // With an explicit offset, shift to that offset and read UTC fields, so the
+  // result is independent of the machine's timezone.
+  // Without one, ECMAScript parses a `T` form as LOCAL time, so the local fields
+  // are the ones the producer wrote; reading UTC fields there would re-impose a
+  // timezone the timestamp never claimed, and the date would depend on the host.
+  const useUtcFields = offset !== undefined;
+  const year = useUtcFields ? shifted.getUTCFullYear() : shifted.getFullYear();
+  const month = (useUtcFields ? shifted.getUTCMonth() : shifted.getMonth()) + 1;
+  const day = useUtcFields ? shifted.getUTCDate() : shifted.getDate();
+  return `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
 }
 
 /** True when the value parses as a date. */
