@@ -21,6 +21,7 @@ import type {
 } from '../core/types.js';
 import { getDescriptor } from '../core/registry.js';
 import { checkPathReadable } from '../core/config.js';
+import { formatCutoff, latestTimestamp } from '../core/cutoff.js';
 import { SOURCE_IDS } from '../core/registry.js';
 
 interface TrialRow {
@@ -167,7 +168,21 @@ export class ChictrPancreaticAdapter {
         warnings: [],
       };
       if (meta.fetchedAt) result.scrapedAt = meta.fetchedAt;
+      // A zero-result answer from this corpus is only meaningful together with
+      // the date the corpus stops: after it, trials are invisible, not absent.
+      const searchCutoff = latestTimestamp([meta.fetchedAt, meta.lastCrawlAt]);
+      if (searchCutoff) result.dataCutoff = searchCutoff;
+      result.cutoffSource = '语料内 trials.updated_at 与 crawl_log 的最大时间戳（取较新者）';
+      result.updateHint = CHICTR_CORPUS_UPDATE_HINT;
       result.warnings!.push('本来源仅为胰腺癌专题离线语料，不覆盖 ChiCTR 全量，也不覆盖其他疾病领域。');
+      if (searchCutoff) {
+        result.warnings!.push(
+          `本语料数据截止 ${formatCutoff(searchCutoff)}；该日期之后登记的试验在本语料中不可见，` +
+            '零结果不能证明不存在。语料由小胰宝社区共同维护，可用 doctor 查看并更新。',
+        );
+      } else {
+        result.warnings!.push('无法确定本语料的数据截止日，请视为未知时间点的快照。');
+      }
       if (meta.detailFailures > 0) {
         result.warnings!.push(`该语料采集日志记录了 ${meta.detailFailures} 条详情抓取失败，相关记录字段可能不完整。`);
       }
@@ -281,21 +296,43 @@ export class ChictrPancreaticAdapter {
           reasonCode: 'OK',
           explanation: `离线语料可用，共 ${total?.c ?? 0} 条胰腺癌专题记录。`,
         };
-        if (meta.fetchedAt) {
-          available.freshness = { ...available.freshness, scrapedAt: meta.fetchedAt };
-          const ageDays = (Date.now() - Date.parse(meta.fetchedAt)) / 86_400_000;
+        // Report the package as the snapshot it is: the newest evidence in it is
+        // the cutoff, and anything registered after that is invisible rather
+        // than absent. This is derived from the corpus, never hardcoded.
+        const cutoff = latestTimestamp([meta.fetchedAt, meta.lastCrawlAt]);
+        available.freshness = {
+          ...available.freshness,
+          scrapedAt: meta.fetchedAt,
+          dataCutoff: cutoff,
+          cutoffSource: '语料内 trials.updated_at 与 crawl_log 的最大时间戳（取较新者）',
+          updateHint: CHICTR_CORPUS_UPDATE_HINT,
+        };
+        if (cutoff) {
+          const ageDays = (Date.now() - Date.parse(cutoff)) / 86_400_000;
           if (!Number.isNaN(ageDays)) {
             available.freshness.staleAfterDays = this.descriptor.staleAfterDays;
             available.freshness.stale = ageDays > (this.descriptor.staleAfterDays ?? 90);
-            if (available.freshness.stale) {
-              available.explanation += ` 语料已 ${Math.round(ageDays)} 天未更新。`;
-            }
+            available.explanation +=
+              ` 数据截止 ${formatCutoff(cutoff)}（${Math.round(ageDays)} 天前）；` +
+              `此后登记的试验在本语料中不可见。`;
+            if (available.freshness.stale) available.explanation += ' 语料已超过建议更新周期。';
           }
+        } else {
+          available.explanation += ' 无法确定数据截止日，请将其视为未知时间点的快照。';
         }
+
+        const spread =
+          meta.fetchedAtEarliest && meta.fetchedAt
+            ? Date.parse(meta.fetchedAt) - Date.parse(meta.fetchedAtEarliest)
+            : 0;
         available.diagnostics = {
           records: total?.c ?? 0,
           detailFailures: meta.detailFailures,
           corpusPath: ctx.paths.chictrCorpus ?? '(unset)',
+          dataCutoff: cutoff ?? null,
+          capturedFrom: meta.fetchedAtEarliest ?? null,
+          captureSpreadDays: spread > 0 ? Math.round(spread / 86_400_000) : 0,
+          updateHint: CHICTR_CORPUS_UPDATE_HINT,
         };
         return available;
       } finally {
@@ -367,6 +404,8 @@ function toRecord(row: TrialRow): RawSourceRecord {
 
 function readCorpusMeta(db: DatabaseSync): {
   fetchedAt?: string;
+  fetchedAtEarliest?: string;
+  lastCrawlAt?: string;
   detailFailures: number;
   unparsedYears: number[];
   events: Array<{ event: string; count: number }>;
@@ -393,13 +432,36 @@ function readCorpusMeta(db: DatabaseSync): {
   );
   const unparsedYears = [...allYears].filter((year) => !doneYears.has(year)).sort((a, b) => a - b);
 
-  const meta: { fetchedAt?: string; detailFailures: number; unparsedYears: number[]; events: Array<{ event: string; count: number }> } = {
+  // The crawl log records when each crawl actually ran, which is the strongest
+  // statement the corpus can make about how current it is.
+  const minAt = db.prepare('SELECT MIN(updated_at) AS m FROM trials').get() as { m: string | null } | undefined;
+  const lastCrawl = db.prepare('SELECT MAX(at) AS m FROM crawl_log').get() as { m: string | null } | undefined;
+
+  const meta: {
+    fetchedAt?: string;
+    fetchedAtEarliest?: string;
+    lastCrawlAt?: string;
+    detailFailures: number;
+    unparsedYears: number[];
+    events: Array<{ event: string; count: number }>;
+  } = {
     detailFailures,
     unparsedYears,
     events: events.map((entry) => ({ event: entry.event, count: Number(entry.c ?? 0) })),
   };
   if (maxAt?.m) meta.fetchedAt = maxAt.m;
+  if (minAt?.m) meta.fetchedAtEarliest = minAt.m;
+  if (lastCrawl?.m) meta.lastCrawlAt = lastCrawl.m;
   return meta;
 }
+
+/**
+ * How a contributor refreshes this corpus. Kept next to the adapter because the
+ * cutoff it reports is only actionable if the reader knows where to get a newer
+ * package - and because a stale corpus is a community problem, not a code bug.
+ */
+export const CHICTR_CORPUS_UPDATE_HINT =
+  '该语料是小胰宝社区共同维护的快照，非官方实时数据。如需更新，请从 ChiCTR 站点重新抓取 ' +
+  'chictr_pancreatic.db 后通过 configure --chictr-corpus <路径> 指向新文件，或向仓库提交更新的语料包。';
 
 export const CHICTR_PANCREATIC_SOURCE_IDS = SOURCE_IDS;

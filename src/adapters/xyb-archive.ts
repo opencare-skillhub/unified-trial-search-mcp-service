@@ -27,6 +27,7 @@ import type {
 import { getDescriptor } from '../core/registry.js';
 import { checkPathReadable } from '../core/config.js';
 import { extractTerms } from './chictr-pancreatic.js';
+import { assessCutoff, formatCutoff } from '../core/cutoff.js';
 
 /** summary.json shape, only the fields this service depends on. */
 export interface ArchiveSummary {
@@ -51,6 +52,8 @@ export interface ArchiveSummary {
     changed?: boolean;
     word_path?: string;
     method?: string;
+    /** Per-record capture time; absent in older packages, so the summary is a fallback. */
+    scrape_time?: string;
   }>;
 }
 
@@ -302,6 +305,25 @@ export class XybArchiveAdapter {
     if (incompleteness.length) result.incompleteness = incompleteness;
     const scrapedAt = latestScrapeTime(packages);
     if (scrapedAt) result.scrapedAt = scrapedAt;
+    // Same contract as status: the snapshot's end travels with the answer, and
+    // the window is stated when the packages were not captured as one snapshot.
+    const searchCutoff = await assessArchiveCutoff(packages);
+    if (searchCutoff.cutoff) result.dataCutoff = searchCutoff.cutoff;
+    result.cutoffSource = `各数据包内记录级 scrape_time 与 summary.json 声明（较新者）；覆盖率 ${
+      searchCutoff.complete ? '已逐条读取记录' : '部分包仅有声明时间'
+    }`;
+    result.updateHint = XYB_ARCHIVE_UPDATE_HINT;
+    if (searchCutoff.cutoff) {
+      const window = searchCutoff.capturedFrom
+        ? `，记录抓取时间跨度为 ${formatCutoff(searchCutoff.capturedFrom)} 至 ${formatCutoff(searchCutoff.cutoff)}`
+        : '';
+      result.warnings!.push(
+        `本数据包数据截止 ${formatCutoff(searchCutoff.cutoff)}${window}；该日期之后登记的试验在包内不可见，` +
+          '零结果不能证明不存在。数据包由小胰宝社区共同维护，可用 doctor 查看并更新。',
+      );
+    } else {
+      result.warnings!.push('无法确定数据包的数据截止日，请视为未知时间点的快照。');
+    }
     return result;
   }
 
@@ -444,24 +466,59 @@ export class XybArchiveAdapter {
         const detail = skipped.map((entry) => `${entry.name}（${entry.reason}）`).join('；');
         warnings.push(`已跳过 ${skipped.length} 个不可用数据包：${detail}。这些包内的记录未纳入本次检索。`);
       }
-      const freshness: SourceStatus['freshness'] = { kind: this.descriptor.freshness };
-      if (scrapedAt) {
-        freshness.scrapedAt = scrapedAt;
+      const cutoffInfo = await assessArchiveCutoff(packages);
+      const freshness: SourceStatus['freshness'] = {
+        kind: this.descriptor.freshness,
+        scrapedAt,
+        dataCutoff: cutoffInfo.cutoff,
+        cutoffSource: cutoffInfo.perPackage.map((entry) => entry.name).length
+          ? `各数据包内记录级 scrape_time 与 summary.json 声明（较新者）；覆盖率 ${
+              cutoffInfo.complete ? '已逐条读取记录' : '部分包仅有声明时间'
+            }`
+          : '无可用时间戳',
+        updateHint: XYB_ARCHIVE_UPDATE_HINT,
+      };
+      if (cutoffInfo.cutoff) {
         freshness.staleAfterDays = this.descriptor.staleAfterDays;
-        const ageDays = (Date.now() - Date.parse(scrapedAt)) / 86_400_000;
+        const ageDays = (Date.now() - Date.parse(cutoffInfo.cutoff)) / 86_400_000;
         if (!Number.isNaN(ageDays)) freshness.stale = ageDays > (this.descriptor.staleAfterDays ?? 90);
       }
+      if (cutoffInfo.capturedFrom) {
+        // Not one snapshot: say so, because a reader comparing this against a
+        // registration date needs to know the window, not just its end.
+        warnings.push(
+          `数据包并非单次快照：记录抓取时间跨度为 ${formatCutoff(cutoffInfo.capturedFrom)} 至 ` +
+            `${formatCutoff(cutoffInfo.cutoff)}。该区间之后登记的试验在所有包内均不可见。`,
+        );
+      }
+      if (cutoffInfo.spread) {
+        warnings.push(
+          `各数据包并非同一次快照：最早的抓取时间为 ${formatCutoff(cutoffInfo.capturedFrom)}，` +
+            `最晚为 ${formatCutoff(cutoffInfo.cutoff)}。该区间之后登记的试验在所有包内均不可见。`,
+        );
+      }
+      const cutoffText = cutoffInfo.cutoff
+        ? ` 数据截止 ${formatCutoff(cutoffInfo.cutoff)}${
+            cutoffInfo.capturedFrom ? `（最早抓取 ${formatCutoff(cutoffInfo.capturedFrom)}）` : ''
+          }；此后登记的试验在数据包中不可见。`
+        : ' 无法确定数据截止日，请将其视为未知时间点的快照。';
       return {
         ...base,
         available: true,
         state: 'SUCCESS',
         reasonCode: warnings.length ? 'OK_WITH_WARNINGS' : 'OK',
-        explanation: `可用数据包 ${packages.length} 个，覆盖关键词：${packages.map((p) => p.summary.keywords ?? p.name).join('、')}。`,
+        explanation: `可用数据包 ${packages.length} 个，覆盖关键词：${packages
+          .map((p) => p.summary.keywords ?? p.name)
+          .join('、')}。${cutoffText}`,
         freshness,
         diagnostics: {
           packages: packages.length,
           skippedPackages: skipped.length,
           totalRecords: packages.reduce((sum, pkg) => sum + (pkg.summary.total_records ?? 0), 0),
+          dataCutoff: cutoffInfo.cutoff ?? null,
+          capturedFrom: cutoffInfo.capturedFrom ?? null,
+          perPackageCutoff: cutoffInfo.perPackage,
+          updateHint: XYB_ARCHIVE_UPDATE_HINT,
           warnings: warnings.join(' | '),
         },
       };
@@ -671,6 +728,122 @@ function latestScrapeTime(packages: PackageInfo[]): string | undefined {
     .filter((time): time is string => typeof time === 'string' && time.length > 0)
     .sort();
   return times.length ? times[times.length - 1] : undefined;
+}
+
+/** Earliest declared scrape_time across packages, when it differs from the newest. */
+function earliestScrapeTime(packages: PackageInfo[]): string | undefined {
+  const times = packages
+    .map((pkg) => pkg.summary.scrape_time)
+    .filter((time): time is string => typeof time === 'string' && time.length > 0)
+    .sort();
+  return times.length ? times[0] : undefined;
+}
+
+/**
+ * How a contributor produces a fresher XYB package.
+ *
+ * This archive is a community-maintained snapshot, so the cutoff it reports is
+ * only useful next to the way to move it forward.
+ */
+export const XYB_ARCHIVE_UPDATE_HINT =
+  '该数据包由小胰宝社区按关键词抓取并共同维护，非官方实时数据。如需更新，请用社区的抓取流程生成新的 ' +
+  'output 数据包后，通过 configure --xyb-archive <output 目录> 指向它，或向仓库提交更新的数据包。';
+
+/**
+ * Data cutoff for the whole archive.
+ *
+ * Each package is assessed on its own record-level capture times first, because
+ * a summary can declare a scrape_time that its records do not support (that
+ * mismatch is a real property of the shipped packages). The archive cutoff is
+ * then the newest package cutoff, and the earliest capture time is reported too
+ * when the packages are not one uniform snapshot.
+ */
+async function assessArchiveCutoff(packages: PackageInfo[]): Promise<{
+  cutoff?: string;
+  capturedFrom?: string;
+  spread: boolean;
+  /** True when the cutoff came from a full read of every record, not a sample. */
+  complete: boolean;
+  perPackage: Array<{ name: string; cutoff?: string; capturedFrom?: string; spread: boolean }>;
+}> {
+  const perPackage: Array<{
+    name: string;
+    cutoff?: string;
+    capturedFrom?: string;
+    spread: boolean;
+  }> = [];
+
+  for (const pkg of packages) {
+    // Record-level times are authoritative but live in the per-record JSON
+    // files, not in summary.json. Reading them still avoids the full parse that
+    // a search does: only the `scrape_time` line is pulled out of each file.
+    // Without a known directory this cannot happen, so the declared summary
+    // time is used and reported as a weaker claim.
+    const directory = pkg.summaryPath ? path.dirname(pkg.summaryPath) : undefined;
+    const recordTimes = directory ? await readRecordScrapeTimes(directory, pkg.summary) : [];
+    const assessment = assessCutoff({
+      recordTimestamps: recordTimes,
+      packageTimestamps: [pkg.summary.scrape_time],
+      // Say plainly which evidence produced the number, so a reader can tell a
+      // verified cutoff from a declared one.
+      cutoffSource: recordTimes.length
+        ? `数据包 ${pkg.name} 内 ${recordTimes.length} 条记录的 scrape_time（较新者）`
+        : `数据包 ${pkg.name} summary.json 声明的 scrape_time（未能读到记录级时间）`,
+      label: pkg.name,
+    });
+    perPackage.push({
+      name: pkg.name,
+      cutoff: assessment.cutoff,
+      capturedFrom: assessment.captureFrom,
+      spread: assessment.spread,
+    });
+  }
+
+  const cutoffs = perPackage.map((entry) => entry.cutoff);
+  const capturedFrom = perPackage.map((entry) => entry.capturedFrom ?? entry.cutoff);
+  const sortedCutoffs = cutoffs.filter((value): value is string => Boolean(value)).sort();
+  const sortedFrom = capturedFrom.filter((value): value is string => Boolean(value)).sort();
+  const cutoff = sortedCutoffs.length ? sortedCutoffs[sortedCutoffs.length - 1] : undefined;
+  const from = sortedFrom.length ? sortedFrom[0] : undefined;
+  const declaredOnly = perPackage.some((entry) => !entry.capturedFrom && entry.cutoff);
+  return {
+    cutoff,
+    capturedFrom: from && from !== cutoff ? from : undefined,
+    spread: perPackage.some((entry) => entry.spread),
+    complete: !declaredOnly,
+    perPackage,
+  };
+}
+
+/**
+ * Read `scrape_time` from each record JSON in a package without parsing the
+ * whole document. Bounded so a huge archive cannot stall a status call.
+ */
+const MAX_CUTOFF_SAMPLE = 3000;
+
+async function readRecordScrapeTimes(directory: string, summary: ArchiveSummary): Promise<string[]> {
+  const declared = summary.results ?? [];
+  // json_path is recorded relative to the archive root (e.g.
+  // "output/胰腺癌/json/CTR1.json"), not to the package directory, so only its
+  // basename is reusable; the package's own `json/` directory is authoritative.
+  const jsonDir = path.join(directory, 'json');
+  const paths = declared
+    .map((entry) => entry.json_path)
+    .filter((value): value is string => typeof value === 'string' && value.length > 0)
+    .map((value) => path.join(jsonDir, path.basename(value)))
+    .slice(0, MAX_CUTOFF_SAMPLE);
+  const times: string[] = [];
+  for (const file of paths) {
+    try {
+      const text = await fs.readFile(file, 'utf8');
+      const match = /"scrape_time"\s*:\s*"([^"]+)"/.exec(text);
+      if (match?.[1]) times.push(match[1]);
+    } catch {
+      // A missing record file is already reported elsewhere; it must not turn
+      // into a fabricated timestamp here.
+    }
+  }
+  return times;
 }
 
 /** Total record slots the packages claim, used to judge coverage. */

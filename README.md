@@ -60,12 +60,39 @@ That single rule turns out to drive almost every design decision below.
 | `ictrp` | WHO ICTRP | online aggregator | global breadth; multi-registry by design |
 | `ctv` | Veeva CTV | online + local FTS | CT.gov depth, fast local index |
 | `chictr_online` | ChiCTR | online | Chinese registered trials, live |
-| `chictr_pancreatic_archive` | ChiCTR corpus | offline SQLite | 468 pancreatic records + raw HTML |
+| `chictr_pancreatic_archive` | ChiCTR corpus | offline SQLite | 468 pancreatic records + raw HTML, **data cutoff 2026-10-04** |
 | `chinadrugtrials` | ChinaDrugTrials | controlled scrape | **contains PI / investigator data** |
-| `xyb_chinadrugtrials_archive` | XYB archive | offline package | 139 pancreatic records, structured sections |
+| `xyb_chinadrugtrials_archive` | XYB archive | offline package | 139 pancreatic records, structured sections, **data cutoff 2026-09-28** |
 
 Together these cover the global registries, the Chinese registries, and the CDE drug-trial platform —
 including the **NMPA/ChinaDrugTrials investigator information** that no other MCP surfaces.
+
+### Offline snapshots declare their own data cutoff
+
+The two offline sources are **snapshots**, not live data. Each reports its data cutoff explicitly, because a
+trial registered after that date is **invisible**, not **absent** — which is the entire reason this project exists:
+
+```jsonc
+"freshness": {
+  "kind": "offline_archive",
+  "dataCutoff": "2026-09-28T07:59:24.275394+08:00",  // nothing in the package is newer
+  "cutoffSource": "per-record scrape_time and the summary.json declaration (newer wins); coverage: every record read",
+  "updateHint": "...maintained by the Xiaoyibao community; point configure --xyb-archive at a newer package..."
+}
+```
+
+Three commitments:
+
+- **The cutoff is derived from the data, never hardcoded** — a hardcoded date becomes a lie the moment somebody
+  refreshes the data without touching the code;
+- **Record-level times outrank the declared summary** — measured on the shipped packages, `summary.json` claims
+  `2026-09-29` while the newest of the 139 records is `2026-09-28`, and the earliest reaches back to `2026-08-13`;
+  that window is reported rather than smoothed into a single tidy timestamp;
+- **`dataCutoff` travels with `search_trials` as well as `get_source_status`** — a zero-result answer has to carry
+  where its snapshot stops, or it looks exactly like a zero result from a live registry.
+
+The data is **maintained by the Xiaoyibao community** and depends on people updating it. Run `doctor` to see the
+current cutoff at any time.
 
 ### Cross-source identity that actually holds up
 

@@ -192,3 +192,76 @@ test('chictr corpus: a Node without node:sqlite degrades instead of crashing', a
   assert.equal(status.sourceId, 'chictr_pancreatic_archive');
   assert.ok(status.fixHint, 'a fix hint is required so the failure is actionable');
 });
+
+test('cutoff: the archive cutoff is derived from evidence, never hardcoded', async () => {
+  const { assessCutoff, formatCutoff, latestTimestamp, futureCutoffWarning } = await load('core/cutoff.js');
+
+  // The cutoff is the newest usable timestamp; a malformed one must be ignored
+  // rather than silently treated as "now", which would make stale data look live.
+  assert.equal(latestTimestamp(['2026-01-01T00:00:00Z', 'not-a-date', '2026-03-01T00:00:00Z']), '2026-03-01T00:00:00Z');
+  assert.equal(latestTimestamp(['nonsense']), undefined);
+  assert.equal(latestTimestamp([]), undefined);
+
+  // Record-level times outrank declared metadata: a summary may claim a scrape
+  // time the records themselves do not support (the shipped packages do).
+  const assessment = assessCutoff({
+    recordTimestamps: ['2026-08-14T00:00:00Z', '2026-09-28T00:00:00Z'],
+    packageTimestamps: ['2026-09-29T00:00:00Z'],
+    cutoffSource: 'test',
+  });
+  assert.equal(assessment.cutoff, '2026-09-28T00:00:00Z');
+  assert.equal(assessment.captureFrom, '2026-08-14T00:00:00Z');
+  assert.ok(assessment.warning, 'a multi-week capture window must be reported, not smoothed over');
+
+  // A single uniform snapshot reports no spread and needs no warning.
+  const uniform = assessCutoff({
+    recordTimestamps: ['2026-09-28T00:00:00Z', '2026-09-28T06:00:00Z'],
+    cutoffSource: 'test',
+  });
+  assert.equal(uniform.spread, false);
+  assert.equal(uniform.warning, undefined);
+
+  // Dates render as a plain date IN THE TIMESTAMP'S OWN OFFSET. This matters:
+  // these corpora are captured at +08:00, and slicing UTC would report the
+  // previous day for anything captured before 08:00 local - understating how
+  // current the snapshot is.
+  assert.equal(formatCutoff('2026-09-28T07:59:24.275394+08:00'), '2026-09-28');
+  assert.equal(formatCutoff('2026-10-04T22:31:31+08:00'), '2026-10-04');
+  assert.equal(formatCutoff('2026-09-28T07:59:24-05:00'), '2026-09-28');
+  assert.equal(formatCutoff('2026-09-28T12:00:00Z'), '2026-09-28');
+  // A timestamp with no offset is read as UTC by Date.parse, so it must render
+  // as UTC: 07:59Z really is the 27th, and pretending otherwise would be worse.
+  assert.equal(formatCutoff('2026-09-28T07:59:24.275394'), '2026-09-27');
+  // Unparseable input is shown raw, never invented or silently dropped.
+  assert.equal(formatCutoff(undefined), '未知');
+  assert.equal(formatCutoff('nonsense'), 'nonsense');
+
+  // A package claiming to be scraped in the future is untrustworthy.
+  const future = futureCutoffWarning('2099-01-01T00:00:00Z', new Date('2026-10-05T00:00:00Z'), 86_400_000);
+  assert.ok(future && future.includes('晚于当前时间'));
+  assert.equal(futureCutoffWarning('2026-10-04T00:00:00Z', new Date('2026-10-05T00:00:00Z'), 86_400_000), undefined);
+});
+
+test('sources: every offline archive declares how it is refreshed', async () => {
+  const registry = await load('core/registry.js');
+  const chictr = await load('adapters/chictr-pancreatic.js');
+  const xyb = await load('adapters/xyb-archive.js');
+
+  // Offline snapshots are community-maintained; each must state its update path,
+  // so a reader who hits the cutoff has somewhere to go.
+  assert.ok(chictr.CHICTR_CORPUS_UPDATE_HINT.includes('社区'));
+  assert.ok(xyb.XYB_ARCHIVE_UPDATE_HINT.includes('社区'));
+  for (const hint of [chictr.CHICTR_CORPUS_UPDATE_HINT, xyb.XYB_ARCHIVE_UPDATE_HINT]) {
+    assert.ok(hint.includes('configure'), 'the hint must name the concrete command');
+    assert.ok(hint.includes('非官方'), 'the hint must not imply official real-time data');
+  }
+
+  // The scope text must admit the cutoff, so a zero-result answer cannot be read
+  // as "this trial does not exist".
+  for (const id of ['chictr_pancreatic_archive', 'xyb_chinadrugtrials_archive']) {
+    const descriptor = registry.getDescriptor(id);
+    assert.equal(descriptor.freshness, 'offline_archive');
+    assert.ok(descriptor.scope.includes('数据截止日'), `${id} scope must mention the cutoff`);
+    assert.ok(descriptor.zeroResultMeaning.includes('数据截止日'), `${id} zero-result meaning must mention the cutoff`);
+  }
+});

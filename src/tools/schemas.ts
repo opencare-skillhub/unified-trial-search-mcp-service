@@ -37,7 +37,9 @@ export const TOOL_SCHEMAS: ToolSchema[] = [
     title: '统一临床试验检索',
     description:
       '在多个已配置来源中检索临床试验并合并结果。响应包含每个来源的终态（statuses）与覆盖状况（coverage）：' +
-      '只有 SUCCESS/NO_RESULTS 的来源才算真正查询过；其它状态的缺失不得解读为“不存在相关试验”。',
+      '只有 SUCCESS/NO_RESULTS 的来源才算真正查询过；其它状态的缺失不得解读为“不存在相关试验”。' +
+      '离线来源（chictr_pancreatic_archive、xyb_chinadrugtrials_archive）在 statuses[].freshness.dataCutoff ' +
+      '给出数据截止日：该日期之后登记的试验在这些来源中不可见，绝不能据此判定“不存在”。',
     inputSchema: {
       type: 'object',
       properties: {
@@ -97,7 +99,9 @@ export const TOOL_SCHEMAS: ToolSchema[] = [
     name: 'get_source_status',
     title: '来源状态诊断',
     description:
-      '返回每个来源的就绪状态与数据依赖情况，不发起检索。SUCCESS 表示入口与数据就绪，不代表该来源包含目标试验。',
+      '返回每个来源的就绪状态与数据依赖情况，不发起检索。SUCCESS 表示入口与数据就绪，不代表该来源包含目标试验。' +
+      '对离线来源同时返回 freshness.dataCutoff（数据截止日）、cutoffSource（截止日的推导依据，可回源核对）' +
+      '与 updateHint（如何贡献更新的数据包）；离线来源是小胰宝社区共同维护的快照，需持续更新。',
     inputSchema: {
       type: 'object',
       properties: {

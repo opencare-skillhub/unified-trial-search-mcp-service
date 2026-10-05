@@ -422,9 +422,9 @@ interface TrialSourceAdapter {
 | ICTRP | registry + primary ID | 原样保留 `rows_returned`、`upstream_reported_total`、`records_incomplete`；ICTRP 成功结果仍可能为下界，尤其不得用其对中国专题作否定结论。 |
 | CTV | 稳定 study ID/slug，保留 NCT/UTN | 搜索零结果仅代表本地 SQLite/FTS 索引未命中；详情 GraphQL 优于 CSV；CSV 字符问题须保留 warning。 |
 | ChiCTR online | `project_id`，`registration_number` 可空 | WAF/短 Cookie/浏览器 fallback 失败须为 `CHALLENGE_REQUIRED` 或 `NEEDS_SETUP`；绝不绕过。 |
-| ChiCTR pancreatic archive | SQLite `trials.project_id` | 限定为胰腺癌离线专题语料，必须报告 `crawl_log`/数据文件时间和专题 coverage；不宣称为全量 ChiCTR。 |
+| ChiCTR pancreatic archive | SQLite `trials.project_id` | 限定为胰腺癌离线专题语料；必须在 `freshness.dataCutoff` 报告数据截止日（由语料内 `trials.updated_at` 与 `crawl_log` 推导，**不得硬编码**）、`cutoffSource` 与 `updateHint`，并保留专题 coverage；不宣称为全量 ChiCTR。 |
 | ChinaDrugTrials | `reg_no` | 仅合法会话的显式同步可以更新；`details` 的扁平键不充分，审计优先使用 `sections`、原始 HTML、Word 与 hash。 |
-| XYB ChinaDrugTrials archive | `reg_no` | 报告每个数据包 `summary.json` 的 query、页数、记录数和 scrape 时间；检查未来时间/summary 与记录时间冲突，发现即 warning。 |
+| XYB ChinaDrugTrials archive | `reg_no` | 报告每个数据包 `summary.json` 的 query、页数、记录数和 scrape 时间；`freshness.dataCutoff` 取"记录级 `scrape_time` 与 summary 声明中的较新者"并声明 `cutoffSource` 的覆盖率，记录时间跨度过大时须显式 warning；检查未来时间，发现即 warning。 |
 
 ## 7. 错误、降级与安全
 
@@ -551,7 +551,8 @@ interface TrialSourceAdapter {
 | ICTRP 上游 CSV/查询结果不完整 | 漏检被误判 | 下界、upstream total、records incomplete 透传；禁止否定性结论 |
 | ChiCTR WAF/短 Cookie/高依赖体积 | 在线查询不可用或脆弱 | 独立 adapter、挑战终态、离线胰腺癌 corpus 回退；不绕过 WAF |
 | ChinaDrugTrials Cookie/网页变动 | 同步失败或解析漂移 | 合规 session、显式维护、重试/延迟、raw HTML + sections + hash 审计 |
-| 本地离线归档过期/时间异常 | 时效错误 | `freshness`、future timestamp/不一致警告、`get_source_status` 可见 |
+| 本地离线归档过期/时间异常 | 时效错误；把"快照没收录"误读为"试验不存在" | `freshness.dataCutoff` + `cutoffSource` + `updateHint` 三者齐备并在 `search_trials`/`get_source_status` 同时可见；截止日由数据推导不得硬编码；记录跨度大时显式 warning；future timestamp/不一致警告 |
+| 离线快照无人更新 | 快照逐渐失效 | 明示社区共同维护、报告截止日与更新命令（`configure --xyb-archive` / `configure --chictr-corpus`）、`doctor` 输出可见；`staleAfterDays` 超期提示 |
 | 多来源重复/冲突 | 错误合并 | source 原始身份、可靠 ID 合并、保留 `overlaps`/`perSource` |
 | PII/原始证据再分发 | 合规/隐私风险 | 来源标记、访问日志、allowlist、秘密隔离、操作手册 |
 | 子进程/MCP 版本不兼容 | 某渠道不能工作 | `doctor` 运行时健康检查、`NEEDS_SETUP`、锁定 bootstrap 依赖版本、固定 adapter contract fixtures |

@@ -84,6 +84,10 @@ FG-M108（缺少 summary.json 清单，视为未完成的采集快照）。这�
 该来源为 `READ_ONLY_ARCHIVE`，`maintain()` 直接抛 `NOT_ENABLED`。
 检索范围仅限**胰腺癌专题**，结果会带范围警告；`freshness.staleAfterDays = 90`。
 
+**数据截止日**：`freshness.dataCutoff` 由语料内 `trials.updated_at` 与 `crawl_log` 的最大时间戳推导（取较新者），
+`cutoffSource` 说明推导依据，`updateHint` 给出更新方式。该日期之后登记的试验在语料中**不可见**，
+零结果不能证明不存在。`doctor` 会单独打印该行。语料由小胰宝社区共同维护，需持续更新。
+
 ### 3.4 ClinicalTrials.gov / CTV（`ctv`）
 
 | 症状 | 处置 |
@@ -112,6 +116,11 @@ FG-M108（缺少 summary.json 清单，视为未完成的采集快照）。这�
 | `ARCHIVE_NOT_CONFIGURED` | `configure --xyb-archive <output 目录>` |
 | `NO_ARCHIVE_PACKAGES` | 目录下无可识别数据包（缺 summary.json 或空包）；补齐采集数据 |
 | `SUMMARY_UNRECOGNISED` | `summary.json` 结构异常；检查采集脚本版本 |
+
+**数据截止日**：`freshness.dataCutoff` 取"记录级 `scrape_time` 与 `summary.json` 声明中的较新者"，
+`cutoffSource` 标明覆盖率（是否已逐条读取记录）。实测中 `summary.json` 声明的时间可能比记录中最新的一条更新，
+因此以记录为准。包内记录抓取时间跨度过大时会额外 warning 说明该区间，不会抹平为单一时间点。
+`updateHint` 给出更新方式；数据包由小胰宝社区共同维护，需持续更新。
 
 ## 4. 定期维护建议
 

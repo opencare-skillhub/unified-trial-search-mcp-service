@@ -127,6 +127,16 @@ export interface SourceConclusion {
     scrapedAt?: string;
     staleAfterDays?: number;
     stale?: boolean;
+    /**
+     * Hard cutoff of the underlying data package: no record in it is newer than
+     * this. For an offline package this is the single most important number to
+     * show a reader, because everything after it is invisible rather than absent.
+     */
+    dataCutoff?: string;
+    /** How `dataCutoff` was derived, so the claim can be checked at the source. */
+    cutoffSource?: string;
+    /** Where a reader goes to contribute a newer package (offline sources only). */
+    updateHint?: string;
   };
   coverage: {
     scope: string;
@@ -192,6 +202,14 @@ export interface AdapterSearchResult {
   retrievedAt?: string;
   indexedAt?: string;
   scrapedAt?: string;
+  /**
+   * Data cutoff of the archive that answered (offline sources). Must travel with
+   * the search result, not only the status call: a caller reading a zero-result
+   * answer needs to know the snapshot's end even when it never asked for status.
+   */
+  dataCutoff?: string;
+  cutoffSource?: string;
+  updateHint?: string;
   warnings?: string[];
   /**
    * Machine-readable reasons this result is not a complete answer (skipped

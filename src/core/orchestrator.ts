@@ -63,6 +63,11 @@ function freshnessFrom(result: AdapterSearchResult | undefined, descriptor: Sour
   if (result?.retrievedAt) freshness.retrievedAt = result.retrievedAt;
   if (result?.indexedAt) freshness.indexedAt = result.indexedAt;
   if (result?.scrapedAt) freshness.scrapedAt = result.scrapedAt;
+  // The cutoff must survive into search responses, otherwise a zero-result
+  // answer from a stale snapshot is indistinguishable from a live one.
+  if (result?.dataCutoff) freshness.dataCutoff = result.dataCutoff;
+  if (result?.cutoffSource) freshness.cutoffSource = result.cutoffSource;
+  if (result?.updateHint) freshness.updateHint = result.updateHint;
   if (descriptor.staleAfterDays !== undefined) {
     freshness.staleAfterDays = descriptor.staleAfterDays;
     const stamp = result?.retrievedAt ?? result?.indexedAt ?? result?.scrapedAt;

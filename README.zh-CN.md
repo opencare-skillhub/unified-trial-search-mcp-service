@@ -64,9 +64,33 @@
 | `ictrp` | WHO ICTRP | 在线聚合 | 全球广度，天然多注册库 |
 | `ctv` | Veeva CTV | 在线 + 本地 FTS | ClinicalTrials.gov 深度，本地索引快 |
 | `chictr_online` | ChiCTR | 在线 | 中国注册试验，实时 |
-| `chictr_pancreatic_archive` | ChiCTR 离线语料 | 离线 SQLite | 468 条胰腺癌记录 + 原始 HTML |
+| `chictr_pancreatic_archive` | ChiCTR 离线语料 | 离线 SQLite | 468 条胰腺癌记录 + 原始 HTML，**数据截止 2026-10-04** |
 | `chinadrugtrials` | ChinaDrugTrials | 受控抓取 | **含研究者（PI）信息** |
-| `xyb_chinadrugtrials_archive` | 小胰宝归档 | 离线数据包 | 139 条胰腺癌记录，结构化章节 |
+| `xyb_chinadrugtrials_archive` | 小胰宝归档 | 离线数据包 | 139 条胰腺癌记录，结构化章节，**数据截止 2026-09-28** |
+
+### 离线快照会声明自己的数据截止日
+
+两个离线来源是**快照**，不是实时数据。它们会明确报告自己的数据截止日，因为截止日之后登记的试验是
+**不可见**，而不是**不存在** —— 这正是本项目存在的意义所在：
+
+```jsonc
+"freshness": {
+  "kind": "offline_archive",
+  "dataCutoff": "2026-09-28T07:59:24.275394+08:00",  // 包内没有任何记录新于此
+  "cutoffSource": "各数据包内记录级 scrape_time 与 summary.json 声明（较新者）；覆盖率 已逐条读取记录",
+  "updateHint": "……小胰宝社区按关键词抓取并共同维护……通过 configure --xyb-archive 指向新包……"
+}
+```
+
+三条约束：
+
+- **截止日从数据推导，绝不硬编码** —— 硬编码的日期会在别人更新数据而没改代码的那一刻变成谎话；
+- **记录级时间优先于 summary 声明** —— 实测中 `summary.json` 声明 `2026-09-29`，而 139 条记录里最新的是
+  `2026-09-28`，且最早可追溯到 `2026-08-13`；这个跨度会被显式报告，不会被抹平成"某个时间点"；
+- **`dataCutoff` 同时出现在 `search_trials` 与 `get_source_status` 的响应里** —— 零结果回答必须自带
+  "这份快照停在哪里"，否则它和实时注册库的零结果长得一模一样。
+
+数据由**小胰宝社区共同维护**，需要大家一起持续更新。运行 `doctor` 可随时查看当前截止日。
 
 ### 经得起核验的跨源身份合并
 

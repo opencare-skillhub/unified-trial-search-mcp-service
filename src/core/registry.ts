@@ -74,8 +74,12 @@ export const SOURCE_REGISTRY: readonly SourceDescriptor[] = [
     supportsEvidence: true,
     supportsMaintenance: false,
     identityRule: 'reg_no 为来源主键；以数据包内 json/summary.json 为准。',
-    zeroResultMeaning: '仅表示该离线数据包内无命中；本包是按关键词抓取的子集，不是全量 ChinaDrugTrials。',
-    scope: '只读离线数据包，覆盖范围取决于包内查询关键词与页数。',
+    zeroResultMeaning:
+      '仅表示该离线数据包内无命中；本包是按关键词抓取的子集，不是全量 ChinaDrugTrials，' +
+      '也不包含数据截止日之后登记的试验。',
+    scope:
+      '只读离线数据包，覆盖范围取决于包内查询关键词与页数；数据截止日由包内记录时间戳推导，' +
+      '该日期之后登记的试验在包内不可见。',
     staleAfterDays: 90,
   },
   {
@@ -108,8 +112,12 @@ export const SOURCE_REGISTRY: readonly SourceDescriptor[] = [
     supportsEvidence: true,
     supportsMaintenance: false,
     identityRule: 'SQLite trials.project_id 为来源主键；registration_number 可为 NULL。',
-    zeroResultMeaning: '仅表示该胰腺癌专题语料内无命中；不覆盖 ChiCTR 全量，也不覆盖其他疾病领域。',
-    scope: '仅胰腺癌专题离线语料，非 ChiCTR 全量。',
+    zeroResultMeaning:
+      '仅表示该胰腺癌专题语料内无命中；不覆盖 ChiCTR 全量与其他疾病领域，' +
+      '也不包含数据截止日之后登记的试验。',
+    scope:
+      '仅胰腺癌专题离线语料，非 ChiCTR 全量；数据截止日由语料内时间戳推导，' +
+      '该日期之后登记的试验在语料中不可见。',
     staleAfterDays: 90,
   },
   {
