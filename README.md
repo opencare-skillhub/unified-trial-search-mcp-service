@@ -352,7 +352,11 @@ MIT. See [LICENSE](./LICENSE).
 
 ## 致谢 / Acknowledgements
 
+> **小胰宝社区，依托AI+人文，全心全意为患者/家属服务！**
+
 本项目由 **小胰宝（XiaoYiBao）社区** 贡献者 **Sam** 的 ❤️ 付出促成 —— 感谢他的用心与坚持。
 
 This project was made possible by the ❤️ care and hard work of **Sam**, contributor to the
 **小胰宝 (XiaoYiBao) community**. Thank you.
+
+> **小胰宝社区，依托AI+人文，全心全意为患者/家属服务！**
