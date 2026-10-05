@@ -40,6 +40,10 @@ jobs:
       # The suite is run several times because it covers deadline- and
       # concurrency-sensitive orchestration: a single green run there is weak
       # evidence, and a race that only shows up occasionally must fail the build.
+      #
+      # One test is opt-in (it needs a real ChiCTR corpus that CI does not have),
+      # so it reports as skipped here; run it locally with
+      # UNIFIED_TRIAL_TEST_CHICTR_CORPUS=<path to chictr_pancreatic.db>.
       - name: Test (3 runs, to catch timing races)
         run: |
           for i in 1 2 3; do

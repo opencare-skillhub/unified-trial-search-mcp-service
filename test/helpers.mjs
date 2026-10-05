@@ -1,8 +1,13 @@
 import { promises as fs } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 
-export const DIST = '/Users/qinxiaoqiang/Downloads/unified_search_trials/dist/src';
+// Derived from this file's own location, never hardcoded: an absolute path would
+// pass on the author's machine and fail in CI or any other checkout.
+const HERE = path.dirname(fileURLToPath(import.meta.url));
+export const ROOT = path.resolve(HERE, '..');
+export const DIST = path.join(ROOT, 'dist', 'src');
 
 export async function load(rel) {
   return import(`${DIST}/${rel}`);

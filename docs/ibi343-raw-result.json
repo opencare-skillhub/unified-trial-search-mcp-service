@@ -932,7 +932,7 @@
         },
         {
           "kind": "source_json",
-          "path": "/Users/qinxiaoqiang/Downloads/ictrp-mcp-service/cache",
+          "path": "<home>/Downloads/ictrp-mcp-service/cache",
           "excerpt": 0,
           "unavailable": "上游 ICTRP 服务的本地结果集缓存由该服务自行管理，本服务只读引用其路径。"
         }
@@ -957,7 +957,7 @@
         },
         {
           "kind": "source_json",
-          "path": "/Users/qinxiaoqiang/Downloads/ictrp-mcp-service/cache",
+          "path": "<home>/Downloads/ictrp-mcp-service/cache",
           "excerpt": 0,
           "unavailable": "上游 ICTRP 服务的本地结果集缓存由该服务自行管理，本服务只读引用其路径。"
         }
@@ -995,7 +995,7 @@
         },
         {
           "kind": "source_json",
-          "path": "/Users/qinxiaoqiang/Downloads/ictrp-mcp-service/cache",
+          "path": "<home>/Downloads/ictrp-mcp-service/cache",
           "excerpt": 0,
           "unavailable": "上游 ICTRP 服务的本地结果集缓存由该服务自行管理，本服务只读引用其路径。"
         }
@@ -1033,7 +1033,7 @@
         },
         {
           "kind": "source_json",
-          "path": "/Users/qinxiaoqiang/Downloads/ictrp-mcp-service/cache",
+          "path": "<home>/Downloads/ictrp-mcp-service/cache",
           "excerpt": 0,
           "unavailable": "上游 ICTRP 服务的本地结果集缓存由该服务自行管理，本服务只读引用其路径。"
         }

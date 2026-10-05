@@ -267,6 +267,13 @@ npm test
 # fail 0
 ```
 
+One test is opt-in because it needs a real ChiCTR corpus (a snapshot CI does not ship). Without it
+the suite reports `45 pass / 1 skip`; run it against your own copy with:
+
+```bash
+UNIFIED_TRIAL_TEST_CHICTR_CORPUS=/path/to/chictr_pancreatic.db npm test
+```
+
 Coverage includes: record identity and normalization, merge-only-on-confirmed-identity, adapter
 contracts against real data, the 4-concurrency / 75-second deadline orchestrator (including the
 distinction between "never started" and "timed out"), all 7 tool schemas and error contracts, cookie

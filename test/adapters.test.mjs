@@ -132,7 +132,10 @@ test('xyb archive: nested sections are authoritative over flattened details', as
 });
 
 test('chictr pancreatic: real corpus, if present, exposes project_id identity and scoping warnings', async (t) => {
-  const corpus = '/Users/qinxiaoqiang/Downloads/chictr_trials/data/chictr_pancreatic.db';
+  // Opt-in, and never a hardcoded path: CI has no local corpus, and a path that
+  // only exists on one machine makes the suite unreproducible.
+  const corpus = process.env.UNIFIED_TRIAL_TEST_CHICTR_CORPUS;
+  if (!corpus) { t.skip('set UNIFIED_TRIAL_TEST_CHICTR_CORPUS to run this against a real corpus'); return; }
   try { await fs.access(corpus); } catch { t.skip('local corpus not available'); return; }
   const { ChictrPancreaticAdapter } = await load('adapters/chictr-pancreatic.js');
   const paths = { ...emptyPaths, chictrCorpus: corpus, evidenceRoots: [path.dirname(corpus)] };

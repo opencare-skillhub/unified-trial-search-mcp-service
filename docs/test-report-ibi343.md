@@ -22,7 +22,7 @@
 | `ctv` | `SUCCESS` | `OK` | local_index / 30d |
 | `ictrp` | `SUCCESS` | `OK` | cached_network / 7d |
 
-**6 个来源全部就绪**，`doctor` 退出码 `0`。`chinadrugtrials` 使用位于 `/Users/qinxiaoqiang/Downloads/chinadrugtrials/output` 的本地受控归档，查询优先读本地、避免不必要的在线抓取。
+**6 个来源全部就绪**，`doctor` 退出码 `0`。`chinadrugtrials` 使用位于 `<home>/Downloads/chinadrugtrials/output` 的本地受控归档，查询优先读本地、避免不必要的在线抓取。
 
 ---
 
@@ -181,7 +181,7 @@ coverage: queried = 6 个来源 | unavailable = [] | notQueried = []
 
 ### 定位过程
 
-1. 检查原目录 `/Users/qinxiaoqiang/Downloads/chinadrugtrials`：`config.json` 中**确实存在**会话 Cookie（长度 300，`cookie_updated_at = 2026-10-04T09:13:25`）。
+1. 检查原目录 `<home>/Downloads/chinadrugtrials`：`config.json` 中**确实存在**会话 Cookie（长度 300，`cookie_updated_at = 2026-10-04T09:13:25`）。
 2. 用该 Cookie 直连站点验证：`POST /clinicaltrials.searchlist.dhtml` 返回 **HTTP 200、63,968 字节、含 `searchTable`**，且解析出 **20 条真实记录** —— 说明 **Cookie 仍然有效**，并非过期。
 3. 检查本服务配置：`/tmp/utcd/unified-trial-mcp.config.json` 中**没有 `chinadrugtrialsArchive`**，且测试进程**未注入 `CHINADRUGTRIALS_COOKIE`**。
 4. 结论：**这不是代码缺陷，而是部署配置缺失**。适配器按设计只从环境变量读取 Cookie（`COOKIE_SECRET_NAMES = ['CHINADRUGTRIALS_COOKIE','CDT_COOKIE']`），从不读取上游项目的 `config.json` —— 这是刻意的安全边界：本服务不解析他人的含密钥配置文件。
@@ -191,7 +191,7 @@ coverage: queried = 6 个来源 | unavailable = [] | notQueried = []
 ```bash
 # 1) 配置本地受控归档路径（供查询与证据回溯使用）
 UNIFIED_TRIAL_CONFIG_DIR=/tmp/utcd node dist/src/cli/main.js configure \
-  --chinadrugtrials-archive /Users/qinxiaoqiang/Downloads/chinadrugtrials/output
+  --chinadrugtrials-archive <home>/Downloads/chinadrugtrials/output
 
 # 2) 注入合法会话 Cookie（从上游 config.json 人工取出，本服务不自动读取）
 export CHINADRUGTRIALS_COOKIE='<合法会话 Cookie>'

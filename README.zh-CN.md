@@ -265,6 +265,13 @@ npm test
 # fail 0
 ```
 
+其中一个测试是"可选启用"的：它需要真实的 ChiCTR 语料快照（CI 不提供该数据）。未提供时结果
+为 `45 通过 / 1 跳过`；如需对本地语料实测：
+
+```bash
+UNIFIED_TRIAL_TEST_CHICTR_CORPUS=/path/to/chictr_pancreatic.db npm test
+```
+
 覆盖范围：记录身份与规范化、仅在确认身份时合并、适配器对真实数据的契约、
 4 并发／75 秒总时限编排器（含"从未启动"与"已超时"的区分）、全部 7 个工具的 schema 与
 错误契约、Cookie 获取与掩码、挑战页识别。

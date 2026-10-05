@@ -13,9 +13,9 @@
 
 | 资产 | 路径（本机已验证） | 大小/规模 | 只读？ |
 |---|---|---|---|
-| ChiCTR 胰腺癌语料 | `/Users/qinxiaoqiang/Downloads/chictr_trials/data/chictr_pancreatic.db` | 468 条，153,878,528 bytes | 只读（`readOnly: true`） |
-| XYB ChinaDrugTrials 数据包 | `/Users/qinxiaoqiang/Downloads/xyb-chinadrugtrials-data/output` | `胰腺癌` 包 139 条 | 只读 |
-| ICTRP bundle | `/Users/qinxiaoqiang/Downloads/ictrp-mcp-service` | 上游缓存 | 只读（维护工具可刷新） |
+| ChiCTR 胰腺癌语料 | `<home>/Downloads/chictr_trials/data/chictr_pancreatic.db` | 468 条，153,878,528 bytes | 只读（`readOnly: true`） |
+| XYB ChinaDrugTrials 数据包 | `<home>/Downloads/xyb-chinadrugtrials-data/output` | `胰腺癌` 包 139 条 | 只读 |
+| ICTRP bundle | `<home>/Downloads/ictrp-mcp-service` | 上游缓存 | 只读（维护工具可刷新） |
 | CTV 本地索引 | `~/.ctv-mcp/ctv.db`（默认） | 已验证 1434 条 | 查询只读；维护工具可写 |
 | ChinaDrugTrials 归档 | 由 `--chinadrugtrials-archive` 指定 | 按采集 | 查询只读；`sync` 可写 |
 | ChiCTR online | 上游 `.cache` | 非语料库 | 只读 |
