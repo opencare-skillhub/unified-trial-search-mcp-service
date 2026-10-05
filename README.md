@@ -69,17 +69,19 @@ including the **NMPA/ChinaDrugTrials investigator information** that no other MC
 
 ### Getting the offline corpora
 
-Two offline corpora ship as **release assets**, so a cold start does not require hunting for files:
+Three offline corpora ship as **release assets**, so a cold start does not require hunting for files:
 
 | Corpus | Flag to mount | Size (packed) | Basis for redistribution |
 |---|---|---|---|
 | `chictr_pancreatic` | `configure --chictr-corpus` | 25 MB | **upstream_public** — ChiCTR publishes this data publicly and anonymously |
 | `xyb_cde_pancreatic` | `configure --xyb-archive` | 11 MB | **community_owned** — the Xiaoyibao community's own scraping output; distributed because its author holds the rights to that output |
+| `ctv_index` | `configure --ctv-database` | 24 MB | **community_owned** — the community's own locally-built CTV index (1,434 studies with full-text search) |
 
 Those two bases are deliberately kept distinct (ADR-009 in the spec). Only the first rests on "the data is
-public". The second is the community's own work product: the fact that the upstream CDE site needs a
-credentialed session is *irrelevant* to that basis and must never be used to justify it. Conflating the two
-would quietly dissolve the rule that this service never fetches credentialed data for you.
+public". The other two are the community's own work product: the fact that the upstream CDE site needs a
+credentialed session, and that `ctv.veeva.com/robots.txt` forbids crawling `/study-search`, is *irrelevant*
+to that basis and must never be used to justify it. Conflating the two would quietly dissolve the rule that
+this service never fetches credentialed data for you.
 
 Each corpus is installed to match what its own adapter expects, which is not the same shape:
 
@@ -89,7 +91,21 @@ unified-trial-mcp configure --chictr-corpus ~/.unified-trial-mcp/corpora/chictr_
 
 unified-trial-mcp fetch-corpus --corpus xyb_cde_pancreatic --apply
 unified-trial-mcp configure --xyb-archive ~/.unified-trial-mcp/corpora/xyb_cde_pancreatic
+
+unified-trial-mcp fetch-corpus --corpus ctv_index --apply
+unified-trial-mcp configure --ctv-database ~/.unified-trial-mcp/corpora/ctv_index/ctv.db
 ```
+
+Two of those flags name a **file** (`--chictr-corpus`, `--ctv-database`), so the payload lands directly under
+the install directory; `--xyb-archive` names the **parent of packages** (the adapter scans it for
+subdirectories holding `summary.json`), so that package stays one level down. Each corpus is verified against
+the table its own adapter reads (`trials` vs `studies`) — a `.db` that merely opens is not proof of a
+working install.
+
+The CTV index has a second half no download can supply: the upstream `ctv-mcp-server` checkout it queries.
+`fetch-corpus` prints that requirement rather than pretending the source is ready. Owning the index means a
+cold start needs no crawl — but a zero result from it still only ever means "not in this index", never
+"this trial does not exist".
 
 Four rules this command follows:
 
@@ -104,8 +120,8 @@ Four rules this command follows:
 - **Use `--url` for a mirror.** `--url https://…` or `--url file:///…` handles intranets and air-gapped hosts.
 
 The data remains its originators'. ChiCTR's corpus is a public snapshot transported read-only; the Xiaoyibao
-CDE archive is the community's own work, and registering trials may be revised upstream at any time, so treat
-the packaged copy as a dated snapshot rather than a source of truth.
+CDE archive and CTV index are the community's own work, and registering trials may be revised upstream at any
+time, so treat the packaged copies as dated snapshots rather than a source of truth.
 
 ### Offline snapshots declare their own data cutoff
 

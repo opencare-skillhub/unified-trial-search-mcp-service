@@ -35,6 +35,7 @@ import { createGzip } from 'node:zlib';
 import { pipeline } from 'node:stream/promises';
 import { Readable } from 'node:stream';
 import path from 'node:path';
+import { homedir } from 'node:os';
 import { fileURLToPath } from 'node:url';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
@@ -89,12 +90,34 @@ const CORPORA = {
       '分发依据是社区对该抓取成果自身拥有分发权（ADR-009）。上游站点为受控来源，' +
       '本包不是上游官方数据集，登记信息可能被随时修订。',
   },
+  ctv_index: {
+    title: 'CTV（Veeva）本地检索索引',
+    // A single SQLite file, and unlike the CDE archive its payload is a FILE, so
+    // it installs directly under extractDir - the same shape as chictr_pancreatic:
+    //   <dest>/ctv_index/ctv.db   ->   configure --ctv-database <that path>
+    //
+    // The index is 102 MB because it carries one `detail_json` blob per study
+    // (1434 studies, FTS5 over title/condition/intervention text). Compressed it
+    // is ~24 MB. It also holds researcher contact details (name/phone/email) as
+    // published on each study page; the rights holder reviewed this and approved
+    // redistributing it as-is, so the packer must not silently strip fields.
+    entries: ['ctv.db'],
+    extractDir: 'ctv_index',
+    basis: 'community_owned',
+    note: '小胰宝社区自建的 CTV（Veeva Clinical Trial Viewer）本地检索索引快照，由 ctv-mcp-server 的 sitemap/GraphQL 同步流程生成；' +
+      '分发依据是社区对该索引成果自身拥有分发权（ADR-009）。' +
+      '上游 ctv.veeva.com 的 robots.txt 禁止抓取 /study-search，本索引不是上游官方数据集，' +
+      '且其零结果只代表"不在本索引内"，不代表试验不存在。',
+  },
 };
 
 /** Where each corpus's data lives by default on the machine that packs it. */
 const DEFAULT_SOURCES = {
   chictr_pancreatic: '/Users/qinxiaoqiang/Downloads/chictr_trials/data',
   xyb_cde_pancreatic: '/Users/qinxiaoqiang/Downloads/xyb-chinadrugtrials-data/output',
+  // The default CTV index location used by ctv-mcp-server (`~/.ctv-mcp/ctv.db`),
+  // which is where a real sync writes unless the host overrides it.
+  ctv_index: `${homedir()}/.ctv-mcp`,
 };
 
 function parseArgs(argv) {

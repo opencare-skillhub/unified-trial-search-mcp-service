@@ -755,3 +755,59 @@ test('corpus: every shipped corpus declares a basis and a real digest', async ()
   const bases = new Set(Object.values(manifest.corpora).map((e) => e.basis));
   assert.ok(bases.size >= 2, `expected both bases to be represented, saw ${[...bases]}`);
 });
+
+test('corpus: each SQLite corpus is verified against the table its adapter reads', async () => {
+  // Post-install verification opens the .db and counts rows to prove the install
+  // is usable. Assuming `trials` for every .db would fail the CTV index install
+  // outright ("no such table: trials") even though its file is perfect - the two
+  // corpora store their studies in different tables (`trials` vs `studies`).
+  const { fetchCorpus } = await load('cli/corpus.js');
+  const { mkdtemp, writeFile, rm } = await import('node:fs/promises');
+  const os = await import('node:os');
+  const path = await import('node:path');
+  const { DatabaseSync } = await import('node:sqlite');
+
+  const destDir = await mkdtemp(path.join(os.tmpdir(), 'utcd-table-'));
+
+  // Build a real, minimal CTV-shaped database: a `studies` table and NO `trials`.
+  const runTar = async (args) => {
+    const extractRoot = args[args.indexOf('-C') + 1];
+    const db = new DatabaseSync(path.join(extractRoot, 'ctv.db'));
+    db.exec('CREATE TABLE studies (utn TEXT PRIMARY KEY, nct TEXT)');
+    db.exec("INSERT INTO studies VALUES ('UTN1', 'NCT1'), ('UTN2', 'NCT2')");
+    db.close();
+  };
+
+  const result = await fetchCorpus(
+    { corpusId: 'ctv_index', destDir, apply: true },
+    {
+      readManifest: async () => ({
+        corpora: {
+          ctv_index: {
+            url: 'https://example.invalid/ctv_index.tar.gz',
+            bytes: 3,
+            sha256: 'f'.repeat(64),
+            extractDir: 'ctv_index',
+            version: '1',
+            title: 't',
+            basis: 'community_owned',
+          },
+        },
+      }),
+      fetchImpl: async () => new Response(new Uint8Array([1, 2, 3]), { status: 200 }),
+      sha256File: async () => 'f'.repeat(64),
+      runTar,
+    },
+  );
+
+  // It must have verified `studies`, not `trials`, and said so.
+  assert.ok(
+    result.steps.some((s) => s.includes('studies') && s.includes('2')),
+    `expected verification against the studies table, got ${JSON.stringify(result.steps)}`,
+  );
+  // The database must sit directly under corpusDir, because --ctv-database names
+  // a FILE (unlike --xyb-archive, which names a parent directory).
+  assert.equal(result.dbPath, path.join(result.corpusDir, 'ctv.db'));
+
+  await rm(destDir, { recursive: true, force: true });
+});

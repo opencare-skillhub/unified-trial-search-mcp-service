@@ -95,7 +95,7 @@ sha256 与分发依据；`--apply` 才下载。流程为：下载到临时文件
 | `basis` | 适用 | 依据 |
 |---|---|---|
 | `upstream_public` | `chictr_pancreatic` | 上游公开发布、可匿名下载的数据集（ADR-008） |
-| `community_owned` | `xyb_cde_pancreatic` | 社区自采归档，权利人对自己这份抓取成果拥有分发权（ADR-009）。**与上游站点是否需凭证无关**——社区自采不等于上游公开，两者判断依据不同，不得相互套用 |
+| `community_owned` | `xyb_cde_pancreatic`、`ctv_index` | 社区自采/自建成果，权利人对自己这份成果拥有分发权（ADR-009）。**与上游站点是否需凭证、是否禁止抓取无关**——社区自建不等于上游公开，两者判断依据不同，不得相互套用 |
 
 两类走**完全相同的技术流程**，区别只在准入判断由谁作出。
 
@@ -105,6 +105,13 @@ sha256 与分发依据；`--apply` 才下载。流程为：下载到临时文件
 |---|---|---|---|
 | `chictr_pancreatic` | `chictr_pancreatic/` | `<dest>/chictr_pancreatic/chictr_pancreatic.db` | `configure --chictr-corpus <dest>/chictr_pancreatic/chictr_pancreatic.db` |
 | `xyb_cde_pancreatic` | `胰腺癌/` | `<dest>/xyb_cde_pancreatic/胰腺癌/summary.json` | `configure --xyb-archive <dest>/xyb_cde_pancreatic` |
+| `ctv_index` | `ctv.db` | `<dest>/ctv_index/ctv.db` | `configure --ctv-database <dest>/ctv_index/ctv.db` |
+
+安装后按各语料**自己的表**验证可读性（`chictr_pancreatic` → `trials`，`ctv_index` → `studies`）：
+"这个 .db 能打开"本身不构成安装可用的证明，错表会以 `no such table` 直接暴露打包错误。
+
+`ctv_index` 是社区自建的 CTV 本地检索索引（1434 条，含 `detail_json` 与 FTS5），压缩后 24 MB。
+它**不含**上游 `ctv-mcp-server` 代码，仍需 `configure --ctv-mcp-server <目录>` 并构建；`fetch-corpus` 会把这条要求打印出来。
 
 `--xyb-archive` 指向的是**数据包的父目录**（适配器在其下扫描含 `summary.json` 的子目录，即 `output/` 形状），
 而不是包本身；`fetch-corpus` 会保留包目录层级，`--apply` 结束时打印可直接复制的挂载命令。
@@ -123,7 +130,7 @@ sha256 与分发依据；`--apply` 才下载。流程为：下载到临时文件
 
 | 症状 | 处置 |
 |---|---|
-| `CTV_MCP_NOT_CONFIGURED` | `configure --ctv-mcp-server <ctv-mcp-server 目录>` |
+| `CTV_MCP_NOT_CONFIGURED` | `configure --ctv-mcp-server <ctv-mcp-server 目录>`（语料只有索引，不含上游代码） |
 | `CTV_UPSTREAM_NOT_BUILT` | 上游 `npm install && npm run build` |
 | 本地索引 0 命中 | **不等于 CT.gov 上没有**；先跑 `sync_ctv_index`（sitemap 同步或 CSV 导入） |
 

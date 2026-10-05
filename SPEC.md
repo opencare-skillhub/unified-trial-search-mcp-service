@@ -163,7 +163,7 @@ unified-trial-mcp configure --cookie-from-curl '<浏览器「复制为 cURL」�
 
 离线包为外部只读资产，不作为需要另行部署的 MCP：用户通过 `configure` 挂载 `xyb-chinadrugtrials-data/output/` 和 `chictr_pancreatic.db`。
 
-**公开离线语料获取（`fetch-corpus`，ADR-008）**：ChiCTR 胰腺癌语料（`chictr_pancreatic.db` + `pancreatic_trials.json` + `html/`）由本仓库 GitHub Release 发布 tar.gz，`fetch-corpus --corpus chictr_pancreatic --apply` 负责下载、校验、解压并原子替换到目标目录。约束：①默认 dry-run，打印将访问的 URL、预期字节数与 sha256，`--apply` 才实际写入；②必须校验 sha256 与字节数，不匹配即失败并**保留原有数据完全不动**；③解压到临时目录、校验通过后才原子替换，绝不就地解压覆盖；④支持重试以应对网络中断，但重试不改变校验要求；⑤`--url` 可指向镜像或 `file://` 本地路径以支持内网；⑥该命令不是 MCP 工具，查询工具绝不隐式触发下载。XYB 社区归档（`xyb_cde_pancreatic`：`json/` + `raw/` + `word/`，全量压缩后约 10.8 MB）同样由本仓库 Release 发布，按 ADR-009 属**社区自采归档（B 类）**，其分发依据是权利人对抓取成果自身拥有分发权，与上游 CDE 站点需要 Cookie 会话无关；冷启动命令为 `fetch-corpus --corpus xyb_cde_pancreatic --apply`，安装后以 `configure --xyb-archive <安装目录>` 挂载。ChinaDrugTrials 只有用户自行按来源条款提供合法会话后才可通过 MCP `sync_chinadrugtrials` 维护；未准备时必须报告 `NEEDS_SETUP`，不得阻断其余来源。
+**公开离线语料获取（`fetch-corpus`，ADR-008）**：ChiCTR 胰腺癌语料（`chictr_pancreatic.db` + `pancreatic_trials.json` + `html/`）由本仓库 GitHub Release 发布 tar.gz，`fetch-corpus --corpus chictr_pancreatic --apply` 负责下载、校验、解压并原子替换到目标目录。约束：①默认 dry-run，打印将访问的 URL、预期字节数与 sha256，`--apply` 才实际写入；②必须校验 sha256 与字节数，不匹配即失败并**保留原有数据完全不动**；③解压到临时目录、校验通过后才原子替换，绝不就地解压覆盖；④支持重试以应对网络中断，但重试不改变校验要求；⑤`--url` 可指向镜像或 `file://` 本地路径以支持内网；⑥该命令不是 MCP 工具，查询工具绝不隐式触发下载。XYB 社区归档（`xyb_cde_pancreatic`：`json/` + `raw/` + `word/`，全量压缩后约 10.8 MB）同样由本仓库 Release 发布，按 ADR-009 属**社区自采归档（B 类）**，其分发依据是权利人对抓取成果自身拥有分发权，与上游 CDE 站点需要 Cookie 会话无关；冷启动命令为 `fetch-corpus --corpus xyb_cde_pancreatic --apply`，安装后以 `configure --xyb-archive <安装目录>` 挂载。CTV 本地检索索引（`ctv_index`：单文件 `ctv.db`，1434 条 studies，含 `detail_json` 与 FTS5，压缩后约 24 MB）同样按 ADR-009 属 B 类（社区自建索引，权利人对该索引成果拥有分发权，与 `ctv.veeva.com/robots.txt` 禁止抓取 `/study-search` 无关），冷启动命令为 `fetch-corpus --corpus ctv_index --apply`，安装后以 `configure --ctv-database <安装目录>/ctv.db` 挂载；该语料**不含**上游 `ctv-mcp-server` 代码，仍需用户自行提供并构建，`fetch-corpus` 必须把这条要求打印出来而不是暗示来源已就绪。安装形状必须与 `configure` 对该语料的期望一致：`--chictr-corpus` 与 `--ctv-database` 指向**文件**（数据包直接落在安装目录下），`--xyb-archive` 指向**数据包的父目录**（适配器在其下扫描含 `summary.json` 的子目录，故包目录必须保留一层）。安装后须按该语料**自己的表**验证可读性（`chictr_pancreatic` → `trials`，`ctv_index` → `studies`），仅"某个 .db 能打开"不构成安装可用；验证失败须报错并保留原有数据。ChinaDrugTrials 只有用户自行按来源条款提供合法会话后才可通过 MCP `sync_chinadrugtrials` 维护；未准备时必须报告 `NEEDS_SETUP`，不得阻断其余来源。
 
 ### 4.2 `search_trials`
 
@@ -496,7 +496,7 @@ interface TrialSourceAdapter {
 4. 实现三个 MCP adapter（ICTRP、CTV、ChiCTR online）及两个只读 SQLite/archive adapter。
 5. 实现 ChinaDrugTrials/XYB archive、详情与证据查询，并建立路径 allowlist。
 6. 实现三个显式维护 adapter/工具与操作日志。
-7. 实现 `fetch-corpus`（ADR-008/ADR-009）与配套 `scripts/pack-corpus.mjs`：打包脚本产出 tar.gz + sha256 清单，CLI 负责下载/校验/原子替换，`bootstrap` 接入为可选步骤。资产包括 `chictr_pancreatic`（A 类，上游公开数据集）与 `xyb_cde_pancreatic`（B 类，社区自采归档，分发范围=全部）；清单条目须声明 `basis`。
+7. 实现 `fetch-corpus`（ADR-008/ADR-009）与配套 `scripts/pack-corpus.mjs`：打包脚本产出 tar.gz + sha256 清单，CLI 负责下载/校验/原子替换，`bootstrap` 接入为可选步骤。资产包括 `chictr_pancreatic`（A 类，上游公开数据集）、`xyb_cde_pancreatic`（B 类，社区自采归档，分发范围=全部）与 `ctv_index`（B 类，社区自建 CTV 索引，分发范围=索引文件本身）；清单条目须声明 `basis`，且各语料的安装形状与其 `configure` 参数语义一致。
 8. 完整测试、安装/配置文档和来源/数据合规操作手册。
 
 阶段完成顺序不意味着可跳过测试；每阶段仅在上一步测试通过后进入。
@@ -569,14 +569,14 @@ interface TrialSourceAdapter {
   - README/文档必须标注语料来源、上游许可与再分发责任，用户可自行用 `--url` 指向自建镜像。
   - 下载过程需可中断恢复（重试）、可诊断（`doctor` 报告语料是否就绪、来源 URL、校验结果）。
 
-### ADR-009：社区自采归档与上游公开语料按不同依据分发
+### ADR-009：社区自采/自建成果与上游公开语料按不同依据分发
 
-- **背景**：XYB 归档（`output/<关键词>/`：结构化 JSON + 原始 HTML + 网页导出 DOC/DOCX，胰腺癌包 109 MB）与 ChiCTR 语料的**数据性质不同**。ChiCTR 语料是上游公开、可匿名下载的数据集；XYB 归档是**小胰宝社区自行抓取的成果**，其 `raw/` 是 CDE 页面的 HTML 快照，而 CDE 站点本身是需 Cookie 会话的受控来源（见 `chinadrugtrials` 适配器的取 Cookie 流程）。若直接套用 ADR-008 的“公开发布、可匿名下载”判据，等于用被分发数据的公开性去论证分发者的权利——这是自我授权，会让 ADR-006 的边界名存实亡。
+- **背景**：XYB 归档（`output/<关键词>/`：结构化 JSON + 原始 HTML + 网页导出 DOC/DOCX，胰腺癌包 109 MB）与 CTV 本地检索索引（`~/.ctv-mcp/ctv.db`，单文件 SQLite，1434 条 studies）都是**社区自采/自建的成果**，与 ChiCTR 语料的**数据性质不同**。ChiCTR 语料是上游公开、可匿名下载的数据集；XYB 归档是**小胰宝社区自行抓取的成果**，其 `raw/` 是 CDE 页面的 HTML 快照，而 CDE 站点本身是需 Cookie 会话的受控来源（见 `chinadrugtrials` 适配器的取 Cookie 流程），CTV 上游 `ctv.veeva.com/robots.txt` 亦明确禁止抓取 `/study-search`。若直接套用 ADR-008 的“公开发布、可匿名下载”判据，等于用被分发数据的公开性去论证分发者的权利——这是自我授权，会让 ADR-006 的边界名存实亡。
 - **决定**：
-  1. **两条独立依据，不得互相援引。** 可自动获取的资产分两类：**(A) 上游公开数据集**——依据是数据本身公开且可匿名下载（ADR-008，如 ChiCTR 语料）；**(B) 社区自采归档**——依据是**权利人对该抓取成果自身拥有分发权**，与上游站点是否需要凭证无关（本 ADR，如 XYB 归档）。B 类资产入库前必须由权利人明确确认分发范围。
+  1. **两条独立依据，不得互相援引。** 可自动获取的资产分两类：**(A) 上游公开数据集**——依据是数据本身公开且可匿名下载（ADR-008，如 ChiCTR 语料）；**(B) 社区自采/自建成果**——依据是**权利人对该成果自身拥有分发权**，与上游站点是否需要凭证、是否禁止抓取**无关**（本 ADR，如 XYB 归档与 `ctv_index`）。B 类资产入库前必须由权利人明确确认分发范围。
   2. 两类资产的**技术流程完全一致**：`fetch-corpus` 单一实现、sha256 + 字节数校验、临时目录解压、原子替换、默认 dry-run、`--url` 可覆盖。区别只在**准入判断由谁作出**，不在机制。
   3. 清单中每个语料**必须声明其依据类别**（`basis: upstream_public | community_owned`）与来源说明（`note`），使后来者能看出该项是凭什么被允许分发的，而不是只能看到一个 URL。
-  4. 权利人可指定的分发范围为**全部或子集**（如仅 `json/` 结构化字段、不含 `raw/` 页面快照）。`word/` 等体积大且服务只返回路径的目录，是否纳入由权利人决定；不纳入时必须如实说明“该目录不随包分发”，不得让用户以为证据链完整。
+  4. 权利人可指定的分发范围为**全部或子集**（如仅 `json/` 结构化字段、不含 `raw/` 页面快照）。`word/` 等体积大且服务只返回路径的目录，是否纳入由权利人决定；不纳入时必须如实说明“该目录不随包分发”，不得让用户以为证据链完整。权利人确认全部可分发后，打包脚本**不得擅自剥离字段**（例如 `ctv_index` 含研究者姓名/电话/邮箱，权利人已确认原样分发）。
 - **理由**：把“能否分发”与“怎样分发”分开，前者是权利问题、必须显式留痕，后者是工程问题、应当统一实现。这样既不为难合法的社区数据集，也不让“反正是公开数据”成为绕过 ADR-006 的万能理由。
 - **替代方案**：把所有离线资产一律按 ADR-008 处理（抹掉两类数据的性质差异，规范失去约束力）；或一律不自动获取（社区自采归档的冷启动门槛问题无法解决）。
 - **后果**：
@@ -595,7 +595,8 @@ interface TrialSourceAdapter {
 | 语料 Release 资产与仓库中的 sha256 清单不一致 | 新环境冷启动下载被拒，或（若跳过校验）装入损坏/被替换的语料 | `fetch-corpus` 强制校验 sha256 + 字节数，不匹配即失败并保留原有数据；打包脚本与清单同一次提交更新；CI 校验清单格式与资产可下载性 |
 | 社区自采归档被当作“上游公开数据”再分发 | 许可与合规风险；ADR-006 边界名存实亡 | ADR-009 要求清单声明 `basis`（`upstream_public`/`community_owned`）与来源说明；B 类资产入库前须权利人确认分发范围；文档不得称其为官方数据集 |
 | B 类归档含页面快照与 DOC，体积与合规面较大 | 下载与存储成本；证据再分发争议 | 分发范围由权利人确定并固化在打包脚本与清单；`word/` 服务只返回路径而不内联内容，故其取舍不影响功能，但必须在文档中如实说明是否随包分发 |
-| 自动下载被视为本服务再分发第三方数据 | 许可与合规风险 | ADR-008 边界：只自动获取公开可匿名下载的语料；README/文档标注来源与许可；用户可 `--url` 指向自建镜像；`fetch-corpus` 打印来源 URL 与校验值供审计 |
+| 自动下载被视为本服务再分发第三方数据 | 许可与合规风险 | ADR-008 边界：A 类只自动获取公开可匿名下载的语料、B 类只获取权利人确认的社区成果；README/文档标注来源与许可；用户可 `--url` 指向自建镜像；`fetch-corpus` 打印来源 URL 与校验值供审计 |
+| 语料安装形状与 `configure` 参数语义不一致 | 下载报成功、查询却报 `NO_ARCHIVE_PACKAGES`（包被装成父目录本身）或 `no such table`（按错误的表验证） | 安装形状随语料区分（文件型 vs 父目录型）；按各语料自己的表验证可读性；`--apply` 结束时打印可直接复制的挂载命令 |
 | 离线快照无人更新 | 快照逐渐失效 | 明示社区共同维护、报告截止日与更新命令（`configure --xyb-archive` / `configure --chictr-corpus`）、`doctor` 输出可见；`staleAfterDays` 超期提示 |
 | 多来源重复/冲突 | 错误合并 | source 原始身份、可靠 ID 合并、保留 `overlaps`/`perSource` |
 | PII/原始证据再分发 | 合规/隐私风险 | 来源标记、访问日志、allowlist、秘密隔离、操作手册 |

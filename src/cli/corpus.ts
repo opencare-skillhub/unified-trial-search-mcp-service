@@ -71,6 +71,17 @@ export interface CorpusManifestEntry {
 const REQUIRED_CONTENT: Record<string, string> = {
   chictr_pancreatic: 'chictr_pancreatic.db',
   xyb_cde_pancreatic: 'summary.json',
+  ctv_index: 'ctv.db',
+};
+
+/**
+ * The table the ADAPTER reads for each SQLite corpus, used to prove an install
+ * actually works. Kept next to REQUIRED_CONTENT because the two must agree: the
+ * required file is meaningful only if the table inside it is the one queried.
+ */
+const SQLITE_TABLE_BY_CORPUS: Record<string, string> = {
+  chictr_pancreatic: 'trials',
+  ctv_index: 'studies',
 };
 
 export function requiredContentFor(corpusId: string): string {
@@ -344,7 +355,11 @@ export async function fetchCorpus(
 
   const destDir = path.resolve(options.destDir ?? path.join(os.homedir(), '.unified-trial-mcp', 'corpora'));
   const corpusDir = path.join(destDir, entry.extractDir);
-  const dbPath = path.join(corpusDir, 'chictr_pancreatic.db');
+  // The required file is corpus-specific (`chictr_pancreatic.db`, `ctv.db`,
+  // `summary.json`); hardcoding ChiCTR's name here made `dbPath` point at a file
+  // that does not exist for every other corpus, and the printed mount command
+  // would hand the user a path that fails.
+  const dbPath = path.join(corpusDir, requiredContentFor(corpusId));
 
   const steps: string[] = [`语料：${corpusId}（${entry.title}）`, `来源：${url}`, `预期大小：${entry.bytes} 字节`, `预期 sha256：${entry.sha256}`];
   const base: FetchCorpusResult = {
@@ -463,15 +478,26 @@ export async function fetchCorpus(
     steps.push(`已替换目标目录：${corpusDir}`);
 
     // A corpus is only "installed" if this service can actually read it. For the
-    // SQLite corpus that means opening it; for an archive package it means the
-    // files the adapter walks are present. Verifying here keeps a corrupt install
-    // from being reported as success and only discovered at query time.
+    // SQLite corpora that means opening it and counting rows in the table the
+    // ADAPTER queries - not just "a .db exists", which a truncated file would
+    // also satisfy. For an archive package it means the files the adapter walks
+    // are present. Verifying here keeps a corrupt install from being reported as
+    // success and only discovered at query time.
+    //
+    // Each corpus names its own table: chictr is read via `trials`, the CTV index
+    // via `studies`. Assuming `trials` for every .db would fail the CTV install
+    // with "no such table: trials".
+    const sqliteTable = SQLITE_TABLE_BY_CORPUS[corpusId];
     if (required.endsWith('.db')) {
+      const table = sqliteTable ?? 'trials';
       const { DatabaseSync } = await import('node:sqlite');
       const db = new DatabaseSync(path.join(corpusDir, required), { readOnly: true });
-      const row = db.prepare('SELECT COUNT(*) AS c FROM trials').get() as { c: number };
-      db.close();
-      steps.push(`数据库可读：trials 共 ${row.c} 条记录`);
+      try {
+        const row = db.prepare(`SELECT COUNT(*) AS c FROM ${table}`).get() as { c: number };
+        steps.push(`数据库可读：${table} 共 ${row.c} 条记录`);
+      } finally {
+        db.close();
+      }
     } else {
       // The archive's package root was renamed into place, so corpusDir IS the
       // package - not a directory of packages. An archive holding several

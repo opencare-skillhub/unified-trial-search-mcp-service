@@ -70,17 +70,19 @@
 
 ### 获取离线语料
 
-两个离线语料都以 **Release 资产**发布，冷启动不必再四处找文件：
+三个离线语料都以 **Release 资产**发布，冷启动不必再四处找文件：
 
 | 语料 | 挂载参数 | 压缩后体积 | 分发依据 |
 |---|---|---|---|
 | `chictr_pancreatic` | `configure --chictr-corpus` | 25 MB | **upstream_public** —— ChiCTR 公开且可匿名下载的数据集 |
 | `xyb_cde_pancreatic` | `configure --xyb-archive` | 11 MB | **community_owned** —— 小胰宝社区自采成果，权利人确认可分发 |
+| `ctv_index` | `configure --ctv-database` | 24 MB | **community_owned** —— 社区自建的 CTV 本地索引（1434 条，含全文检索） |
 
-这两条依据**刻意分开**（规范 ADR-009）。只有第一条建立在"数据本身公开"之上；第二条依据的是**社区对自己抓取成果的权利**，
-上游 CDE 站点需要 Cookie 会话这一点与**该依据无关**，绝不能拿来论证它。把两者混为一谈，等于悄悄废掉"本服务绝不代取需凭证数据"这条底线。
+这两条依据**刻意分开**（规范 ADR-009）。只有第一条建立在"数据本身公开"之上；后两条依据的是**社区对自己成果的权利**，
+上游 CDE 站点需要 Cookie 会话、`ctv.veeva.com/robots.txt` 禁止抓取 `/study-search`，这些都与**该依据无关**，绝不能拿来论证它。
+把两者混为一谈，等于悄悄废掉"本服务绝不代取需凭证数据"这条底线。
 
-两者安装后的目录形状不同，各自匹配自己的适配器：
+各语料安装后的目录形状不同，各自匹配自己的适配器：
 
 ```bash
 unified-trial-mcp fetch-corpus --corpus chictr_pancreatic --apply
@@ -88,7 +90,17 @@ unified-trial-mcp configure --chictr-corpus ~/.unified-trial-mcp/corpora/chictr_
 
 unified-trial-mcp fetch-corpus --corpus xyb_cde_pancreatic --apply
 unified-trial-mcp configure --xyb-archive ~/.unified-trial-mcp/corpora/xyb_cde_pancreatic
+
+unified-trial-mcp fetch-corpus --corpus ctv_index --apply
+unified-trial-mcp configure --ctv-database ~/.unified-trial-mcp/corpora/ctv_index/ctv.db
 ```
+
+其中两个参数指向**文件**（`--chictr-corpus`、`--ctv-database`），数据包直接落在安装目录下；
+`--xyb-archive` 指向**数据包的父目录**（适配器要在其下扫描含 `summary.json` 的子目录），所以该包保留一层目录。
+安装后还会按各语料**自己的表**验证（`trials` 与 `studies`）——"这个 .db 能打开"本身不构成安装可用的证明。
+
+CTV 索引还有一半是下载提供不了的：它查询的上游 `ctv-mcp-server` 目录。`fetch-corpus` 会把这一要求明确打印出来，
+而不是假装来源已就绪。有了索引，冷启动无需再爬站——但它返回零结果时依然只代表"不在本索引内"，不代表试验不存在。
 
 这条命令遵守四条规则：
 
@@ -99,8 +111,8 @@ unified-trial-mcp configure --xyb-archive ~/.unified-trial-mcp/corpora/xyb_cde_p
   （ADR-006）。每个语料都要声明自己的依据（`upstream_public` 或 `community_owned`），未声明依据的资产安装时直接拒绝（ADR-009）；
 - **镜像用 `--url`。** 支持 `https://…` 与 `file:///…`，适配内网与离线机房。
 
-数据版权归各自来源方所有。ChiCTR 语料是公开快照的只读搬运；小胰宝 CDE 归档是社区自采成果，
-且登记信息可能被上游随时修订，请把它当作有截止日的快照而非事实源的最终版本。
+数据版权归各自来源方所有。ChiCTR 语料是公开快照的只读搬运；小胰宝 CDE 归档与 CTV 索引是社区自采/自建成果，
+且登记信息可能被上游随时修订，请把它们当作有截止日的快照而非事实源的最终版本。
 
 ### 离线快照会声明自己的数据截止日
 

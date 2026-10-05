@@ -329,12 +329,26 @@ async function commandFetchCorpus(flags: Map<string, string | boolean>): Promise
     }
     // Each corpus is mounted by a different configure flag; printing the ChiCTR
     // flag for the XYB archive would send users down a path that fails.
+    const MOUNT_BY_CORPUS: Record<string, string> = {
+      chictr_pancreatic: `unified-trial-mcp configure --chictr-corpus ${result.dbPath}`,
+      xyb_cde_pancreatic: `unified-trial-mcp configure --xyb-archive ${result.corpusDir}`,
+      ctv_index: `unified-trial-mcp configure --ctv-database ${result.corpusDir}/ctv.db`,
+    };
     const mount =
-      result.corpusId === 'xyb_cde_pancreatic'
-        ? `unified-trial-mcp configure --xyb-archive ${result.corpusDir}`
-        : `unified-trial-mcp configure --chictr-corpus ${result.dbPath}`;
+      MOUNT_BY_CORPUS[result.corpusId] ??
+      `unified-trial-mcp configure --chictr-corpus ${result.dbPath}`;
+    // The CTV source needs a second half that no download can supply: the
+    // upstream ctv-mcp-server checkout it queries. Saying only "mount the
+    // database" would leave the source at CTV_MCP_NOT_CONFIGURED.
+    const ctvExtra =
+      result.corpusId === 'ctv_index'
+        ? '\n注意：该来源还需要上游 ctv-mcp-server 目录（本服务不代下载、不代构建）：\n' +
+          '  unified-trial-mcp configure --ctv-mcp-server <ctv-mcp-server 目录>\n' +
+          '  并在该目录执行 npm install && npm run build\n'
+        : '';
     process.stdout.write(
-      `\n语料已就绪：${result.corpusDir}\n` + `下一步把它挂载为只读来源：\n  ${mount}\n`,
+      `\n语料已就绪：${result.corpusDir}\n` +
+        `下一步把它挂载为只读来源：\n  ${mount}\n${ctvExtra}`,
     );
     return 0;
   } catch (error) {
@@ -496,8 +510,10 @@ function usage(): void {
       '  --cookie-check-keyword <关键词>  校验 Cookie 时使用的只读检索词（默认 胰腺癌）',
       '',
       `配置文件：$UNIFIED_TRIAL_CONFIG_DIR 或 ${defaultConfigDir()}/${CONFIG_FILE_NAME}`,
-      '离线语料：fetch-corpus 只获取公开发布、可匿名下载的语料，强制 sha256 校验，',
-      '         失败时保留原有数据不动；需要凭证或需绕过防护的数据绝不自动获取。',
+      '离线语料：fetch-corpus 只获取清单 corpora/manifest.json 中已声明分发依据的语料',
+      '          （upstream_public 上游公开数据集 / community_owned 社区自采归档），',
+      '          强制 sha256 校验，失败时保留原有数据不动；',
+      '          需要凭证或需绕过防护的数据绝不自动获取。',
       'Cookie：存放在 <配置目录>/cookie.env（权限 0600），由 configure 显式写入并校验；',
       '        doctor/bootstrap 只引导、绝不自动获取，也不绕过验证码或 WAF。',
       '',
