@@ -172,3 +172,23 @@ test('tools: record handle parsing rejects malformed ids', async () => {
   assert.throws(() => parseRecordHandle('nope:1'), (e) => e.reasonCode === 'UNKNOWN_SOURCE');
   assert.deepEqual(parseRecordHandle('ictrp:NCT1'), { sourceId: 'ictrp', sourceRecordId: 'NCT1' });
 });
+
+test('chictr corpus: a Node without node:sqlite degrades instead of crashing', async () => {
+  // The regression this guards is real and was caught only by CI: a top-level
+  // `import { DatabaseSync } from 'node:sqlite'` kills the whole process on
+  // Node 20 with ERR_UNKNOWN_BUILTIN_MODULE, taking all six sources down even
+  // though only the corpus adapter needs SQLite. Importing the module must
+  // therefore be free of that dependency, and the failure must surface as an
+  // ordinary per-source NEEDS_SETUP conclusion carrying a version to upgrade to.
+  const mod = await load('adapters/chictr-pancreatic.js');
+  assert.equal(typeof mod.ChictrPancreaticAdapter, 'function');
+  assert.ok(mod.NODE_SQLITE_MIN_VERSION, 'the supported floor must be exported');
+  assert.match(mod.NODE_SQLITE_MIN_VERSION, /^\d+\.\d+\.\d+$/);
+
+  // A missing/unallowlisted corpus is reported, never thrown out of the process.
+  const adapter = new mod.ChictrPancreaticAdapter();
+  const status = await adapter.getStatus({ paths: { chictrCorpus: undefined, evidenceRoots: ['/tmp'] } });
+  assert.equal(status.state, 'NEEDS_SETUP');
+  assert.equal(status.sourceId, 'chictr_pancreatic_archive');
+  assert.ok(status.fixHint, 'a fix hint is required so the failure is actionable');
+});

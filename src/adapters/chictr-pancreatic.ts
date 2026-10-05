@@ -6,7 +6,6 @@
  * registration_number is nullable for pre-2018 records.
  */
 
-import { DatabaseSync } from 'node:sqlite';
 import { AdapterError } from '../core/types.js';
 import type {
   AdapterContext,
@@ -55,6 +54,42 @@ const SELECT_COLUMNS = `
 /** Free-text columns scanned by a keyword search; one bound placeholder each. */
 const SEARCH_COLUMNS = ['title', 'disease', 'purpose', 'sponsor', 'institution'] as const;
 
+/** Minimum Node.js shipping `node:sqlite` (official docs: "Added in: v22.5.0"). */
+export const NODE_SQLITE_MIN_VERSION = '22.5.0';
+
+type SqliteModule = typeof import('node:sqlite');
+type DatabaseSync = import('node:sqlite').DatabaseSync;
+
+let sqliteModule: SqliteModule | undefined;
+
+/**
+ * Load `node:sqlite` lazily.
+ *
+ * A top-level `import` of `node:sqlite` makes the whole process die at startup on
+ * Node 20 with an unrecoverable `ERR_UNKNOWN_BUILTIN_MODULE`, which would break
+ * every other source even though only this one corpus needs SQLite. Loading it
+ * here converts that into an ordinary per-source `NEEDS_SETUP` conclusion.
+ */
+async function loadSqlite(): Promise<SqliteModule> {
+  if (sqliteModule) return sqliteModule;
+  try {
+    sqliteModule = (await import('node:sqlite')) as SqliteModule;
+    return sqliteModule;
+  } catch (error) {
+    const code = (error as { code?: string }).code;
+    throw new AdapterError(
+      'NEEDS_SETUP',
+      'NODE_SQLITE_UNAVAILABLE',
+      `当前 Node.js（${process.version}）不提供 node:sqlite，无法读取离线语料${
+        code ? `（${code}）` : ''
+      }。`,
+      {
+        fixHint: `请使用 Node.js >= ${NODE_SQLITE_MIN_VERSION}（推荐 >= 22.13.0，免 --experimental-sqlite 标志）后重试；其余来源不受影响。`,
+      },
+    );
+  }
+}
+
 export class ChictrPancreaticAdapter {
   readonly descriptor: SourceDescriptor;
 
@@ -63,6 +98,7 @@ export class ChictrPancreaticAdapter {
   }
 
   private async openAndCheck(ctx: AdapterContext): Promise<DatabaseSync> {
+    const { DatabaseSync } = await loadSqlite();
     const file = ctx.paths.chictrCorpus;
     if (!file) {
       throw new AdapterError('NEEDS_SETUP', 'CORPUS_NOT_CONFIGURED', '未配置 ChiCTR 胰腺癌离线语料路径。', {

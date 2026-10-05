@@ -17,8 +17,9 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        # 20 is the declared floor (`engines.node`); 22 is the current LTS.
-        node: ['20', '22']
+        # 22.13.0 is the declared floor (`engines.node`): `node:sqlite` landed in
+        # 22.5.0 but only stopped requiring `--experimental-sqlite` in 22.13.0.
+        node: ['22.13.0', '24']
         os: [ubuntu-latest, macos-latest]
     steps:
       - uses: actions/checkout@v4
@@ -48,12 +49,12 @@ jobs:
         run: |
           for i in 1 2 3; do
             echo "--- run $i ---"
-            # Unquoted on purpose: the shell expands the glob. Node 20's
-            # --test does not expand globs itself, so a quoted pattern is
-            # passed through literally and matches nothing.
             node --test test/*.test.mjs
           done
 
+      # Proves the graceful-degradation path is real: on a Node that lacks
+      # `node:sqlite` the ChiCTR corpus source must report a guided NEEDS_SETUP
+      # instead of killing the process at import time.
       - name: Verify the CLI entry actually starts
         run: |
           node dist/src/cli/main.js help

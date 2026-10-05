@@ -4,7 +4,7 @@
 [![English](https://img.shields.io/badge/README-English-blue)](./README.md)
 [![CI](https://github.com/opencare-skillhub/unified-trial-search-mcp-service/actions/workflows/ci.yml/badge.svg)](https://github.com/opencare-skillhub/unified-trial-search-mcp-service/actions/workflows/ci.yml)
 [![License](https://img.shields.io/badge/license-MIT-green)](#许可证)
-[![Node](https://img.shields.io/badge/node-%E2%89%A520-brightgreen)](https://nodejs.org/)
+[![Node](https://img.shields.io/badge/node-%E2%89%A522.13-brightgreen)](https://nodejs.org/)
 [![TypeScript](https://img.shields.io/badge/TypeScript-5.6-3178C6?logo=typescript&logoColor=white)](https://www.typescriptlang.org/)
 [![MCP](https://img.shields.io/badge/MCP-stdio-8A2BE2)](https://modelcontextprotocol.io/)
 [![Tests](https://img.shields.io/badge/测试-46%20通过-success)](#测试)
@@ -135,7 +135,11 @@ ictrp:NCT07066098 ┘
 
 ## 安装
 
-需要 **Node ≥ 20**。离线语料路径不需要 Python。
+需要 **Node ≥ 22.13**。离线语料路径不需要 Python。
+
+这个下限由 `node:sqlite`（ChiCTR 语料适配器使用）决定：该模块自 Node 22.5.0 起存在，
+22.13.0 起不再需要 `--experimental-sqlite` 标志。在更低版本上服务仍能启动，其余来源照常可用，
+仅 ChiCTR 语料这一来源报 `NEEDS_SETUP`（`NODE_SQLITE_UNAVAILABLE`）并给出需升级到的版本。
 
 ```bash
 git clone https://github.com/opencare-skillhub/unified-trial-search-mcp-service.git
@@ -282,7 +286,7 @@ UNIFIED_TRIAL_TEST_CHICTR_CORPUS=/path/to/chictr_pancreatic.db npm test
 ### 持续集成
 
 [`.github/workflows/ci.yml`](.github/workflows/ci.yml) 在每次 push 与 PR 上运行，矩阵覆盖
-**Node 20 与 22** × **Ubuntu 与 macOS**：类型检查 → 构建 → **连跑 3 轮测试**（本项目含
+**Node 22.13 与 24** × **Ubuntu 与 macOS**：类型检查 → 构建 → **连跑 3 轮测试**（本项目含
 时限与并发敏感路径，单轮通过证据不足）→ CLI 冒烟 → 两道不变量守卫：
 
 - **无凭证入库** —— 一旦 `cookie.env` 或配置文件被纳入版本控制即失败。

@@ -4,7 +4,7 @@
 [![English](https://img.shields.io/badge/README-English-blue)](./README.md)
 [![CI](https://github.com/opencare-skillhub/unified-trial-search-mcp-service/actions/workflows/ci.yml/badge.svg)](https://github.com/opencare-skillhub/unified-trial-search-mcp-service/actions/workflows/ci.yml)
 [![License](https://img.shields.io/badge/license-MIT-green)](#license)
-[![Node](https://img.shields.io/badge/node-%E2%89%A520-brightgreen)](https://nodejs.org/)
+[![Node](https://img.shields.io/badge/node-%E2%89%A522.13-brightgreen)](https://nodejs.org/)
 [![TypeScript](https://img.shields.io/badge/TypeScript-5.6-3178C6?logo=typescript&logoColor=white)](https://www.typescriptlang.org/)
 [![MCP](https://img.shields.io/badge/MCP-stdio-8A2BE2)](https://modelcontextprotocol.io/)
 [![Tests](https://img.shields.io/badge/tests-46%20passing-success)](#testing)
@@ -134,7 +134,12 @@ forbidden names (`url`/`path`/`timeout`/`cookie`/`token`/`secret`/`credential`/`
 
 ## Install
 
-Requires **Node ≥ 20**. No Python required for the offline-corpus path.
+Requires **Node ≥ 22.13**. No Python required for the offline-corpus path.
+
+The floor is set by `node:sqlite` (the ChiCTR corpus adapter): the module exists from
+Node 22.5.0 and stops requiring `--experimental-sqlite` at 22.13.0. On anything older
+the service still starts and every other source keeps working — only the ChiCTR corpus
+reports `NEEDS_SETUP` (`NODE_SQLITE_UNAVAILABLE`) with the version to upgrade to.
 
 ```bash
 git clone https://github.com/opencare-skillhub/unified-trial-search-mcp-service.git
@@ -282,7 +287,7 @@ acquisition and masking, and challenge-page detection.
 ### Continuous integration
 
 [`.github/workflows/ci.yml`](.github/workflows/ci.yml) runs on every push and pull request across
-**Node 20 and 22** on **Ubuntu and macOS**: typecheck → build → the suite **three times** (this
+**Node 22.13 and 24** on **Ubuntu and macOS**: typecheck → build → the suite **three times** (this
 project has deadline- and concurrency-sensitive paths, so one green run is weak evidence) → CLI smoke
 test → two invariant guards:
 

@@ -4,7 +4,7 @@
 - **版本**：0.1.0-draft
 - **日期**：2026-03-13
 - **服务名**：`unified-trial-mcp`
-- **部署形态**：单一 Node.js ≥20 的 stdio MCP Server
+- **部署形态**：单一 Node.js ≥22.13 的 stdio MCP Server
 - **新环境策略**：单入口 + `doctor` + 显式 `bootstrap`；用户只向 MCP Client 注册本服务。
 
 ## 1. 目标与范围
@@ -57,7 +57,8 @@
 
 ### 2.3 非功能约束
 
-- Node.js ≥20，ESM TypeScript；stdio JSON-RPC MCP transport。
+- Node.js ≥22.13，ESM TypeScript；stdio JSON-RPC MCP transport。
+  下限由 `node:sqlite`（ChiCTR 语料适配器）决定；该模块缺失时该来源报 `NEEDS_SETUP`，不影响其余来源。
 - 默认本地运行，不开放监听端口。
 - 所有 adapter 以显式超时、取消信号和结果上限运行。
 - 输出必须可 JSON 序列化；不得以自由文本代替来源状态机。
