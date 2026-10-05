@@ -15,7 +15,7 @@
 
 > 💚 本项目由 **小胰宝（XiaoYiBao）社区** 贡献者 **Sam** 的用心付出促成，在此致谢。
 
-![架构图：一个封闭的 MCP 工具面覆盖六个通道，由封闭来源注册表编排，并以诚实性契约收口](docs/assets/architecture.svg)
+![架构图：一个封闭的 MCP 工具面覆盖六个通道，由封闭来源注册表编排，返回逐来源的终态](docs/assets/architecture.svg)
 
 `doctor` 如实报告每个通道的状态 —— 且从不打印 Cookie：
 
@@ -106,30 +106,34 @@ ictrp:NCT07066098 ┘
 15 条原始命中 → 13 条规范记录，2 处合并均经人工核验。每条合并记录都保留
 `mergedFrom`、`sourceLabels` 与 `perSource`，合并过程始终可审计。
 
-## 诚实性契约
+## 状态码解读
 
-十个终态，其中**只有两个**意味着"我们确实查过了"：
+`search_trials` 为每个来源返回一个终态。**只有 `SUCCESS` 和 `NO_RESULTS` 表示该来源真的被查过了**；其余八种都表示这一路没拿到结果，此时不能对"该试验是否存在"下任何结论。
 
-| 状态 | 含义 |
+| 状态 | 调用方应当如何解读 |
 |---|---|
-| `SUCCESS` | 已查询，返回结果 |
-| `NO_RESULTS` | 已查询，确实为空 —— **且带该来源自身的说明** |
-| `NOT_ENABLED` | 来源已关闭 |
-| `NEEDS_SETUP` | 缺依赖、路径、运行时或会话 |
-| `NOT_QUERIED` | 从未尝试（总时限已到） |
-| `TIMEOUT` | 已启动，未在时限内完成 |
-| `CHALLENGE_REQUIRED` | 需要人工验证 —— **绝不绕过** |
-| `RATE_LIMITED` | 上游限流 |
-| `DENIED` | 来源拒绝访问 |
-| `FAILED` | 已尝试但出错 |
+| `SUCCESS` | 该来源已查询并返回结果。结果是否完整另看 `completeness`。 |
+| `NO_RESULTS` | 该来源已查询，确实没有匹配。请连同 `coverage.zeroResultMeaning` 一起理解——它说明这个"空"对该来源到底意味着什么。 |
+| `NOT_ENABLED` | 该来源在本次部署中被关闭，没有发起任何请求。 |
+| `NEEDS_SETUP` | 该来源缺依赖、路径、运行时或会话，无法查询。`fixHint` 给出修复方式。 |
+| `NOT_QUERIED` | 从未尝试发起请求（通常是总时限已到）。与"查了但失败"不同，计数时可单独统计。 |
+| `TIMEOUT` | 请求已发出，但未在时限内返回。结果未知。 |
+| `CHALLENGE_REQUIRED` | 上游要求人工验证。本服务不会绕过验证码或 WAF。 |
+| `RATE_LIMITED` | 被上游限流。稍后重试可能成功。 |
+| `DENIED` | 来源拒绝访问（权限或会话失效）。 |
+| `FAILED` | 已尝试但出错。`reasonCode` 与 `explanation` 给出原因。 |
 
-`NO_RESULTS` 永远不会单独返回。本地索引未命中会明说：
+每条记录另有 `attempted` 字段：`false` 表示根本没发起请求。`NO_RESULTS` 与 `TIMEOUT` 都可能是"没查到"，但只有前者说明上游确认了空结果。
 
-> *"仅表示本地 SQLite/FTS 索引未命中，不代表 ClinicalTrials.gov 上不存在该试验。"*
+**三类来源需要特别解读：**
 
-而 ICTRP —— 存在已知静默缺口 —— 被永久标记 `isLowerBound: true`：
+- **CTV 是本地索引。** 未命中只说明本地 SQLite/FTS 里没有，不代表 ClinicalTrials.gov 上没有：
+  > 仅表示本地 SQLite/FTS 索引未命中，不代表 ClinicalTrials.gov 上不存在该试验。
 
-> *"上游标注结果不完整，估计缺失 N 条；ICTRP 导出存在已知静默缺口，零/少结果不能作为'不存在'的结论。"*
+- **ICTRP 是下界。** 该来源永久带 `isLowerBound: true`，其导出的已知静默缺口意味着零结果或少结果都不能推出"不存在"：
+  > 上游标注结果不完整，估计缺失 N 条；ICTRP 导出存在已知静默缺口，零/少结果不能作为"不存在"的结论。
+
+- **两个离线快照声明了数据截止日**（见下一节）。截止日之后登记的试验在快照里看不见，这不等于"不存在"。
 
 ## 七个 MCP 工具
 
@@ -264,7 +268,7 @@ unified-trial-mcp configure --cookie-from-curl '<浏览器「复制为 cURL」�
 - 永不打印 Cookie 值（仅打印字段名与长度指纹）。
 - 所有日志与错误路径均做秘密字段剔除。
 - 证据路径限定在已配置根目录的 allowlist 之内。
-- 不把"没查到"变成"不存在" —— 见上文诚实性契约。
+- 不把"没查到"变成"不存在"：见上文「状态码解读」。
 
 ## 项目结构
 

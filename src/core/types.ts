@@ -30,6 +30,26 @@ export type SourceState =
   | 'FAILED';
 
 /** States that prove the upstream was actually consulted. */
+/**
+ * Every terminal state a source can report, in documentation order.
+ *
+ * Exported so the published status table can be checked against it: a state that
+ * exists in code but is missing from the docs (or vice versa) is a silent lie
+ * about whether the service actually looked.
+ */
+export const SOURCE_STATES = [
+  'SUCCESS',
+  'NO_RESULTS',
+  'NOT_ENABLED',
+  'NEEDS_SETUP',
+  'NOT_QUERIED',
+  'TIMEOUT',
+  'CHALLENGE_REQUIRED',
+  'RATE_LIMITED',
+  'DENIED',
+  'FAILED',
+] as const satisfies readonly SourceState[];
+
 export const QUERIED_STATES: readonly SourceState[] = ['SUCCESS', 'NO_RESULTS'];
 
 export function wasQueried(state: SourceState): boolean {

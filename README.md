@@ -15,7 +15,7 @@
 
 > 💚 This project exists thanks to **Sam**, contributor to the [小胰宝 (XiaoYiBao) community](https://github.com/xiaoyibao). His care and hard work made it real.
 
-![Architecture: one sealed MCP tool surface over six channels, orchestrated with a closed source registry and an honesty contract](docs/assets/architecture.svg)
+![Architecture: one sealed MCP tool surface over six channels, orchestrated with a closed source registry and a per-source terminal state](docs/assets/architecture.svg)
 
 `doctor` tells you the truth about every channel — and never prints a cookie:
 
@@ -108,30 +108,34 @@ Two records with *identical titles* but *different registry numbers* are **never
 against real data: 15 raw hits → 13 canonical records, with the 2 merges manually checked. Every
 merged record keeps `mergedFrom`, `sourceLabels` and `perSource`, so the merge is always auditable.
 
-## The honesty contract
+## Reading the status codes
 
-Ten terminal states. Only two of them mean "we actually looked":
+`search_trials` returns one terminal state per source. **Only `SUCCESS` and `NO_RESULTS` mean that source was actually queried**; the other eight all mean no result came back from that channel, and none of them supports any conclusion about whether a trial exists.
 
-| State | Means |
+| State | How a caller should read it |
 |---|---|
-| `SUCCESS` | queried, results returned |
-| `NO_RESULTS` | queried, genuinely nothing — **and carries the source's caveat** |
-| `NOT_ENABLED` | source switched off |
-| `NEEDS_SETUP` | missing dependency, path, runtime, or session |
-| `NOT_QUERIED` | never attempted (deadline ran out) |
-| `TIMEOUT` | started, did not finish in time |
-| `CHALLENGE_REQUIRED` | human verification needed — **never bypassed** |
-| `RATE_LIMITED` | upstream throttling |
-| `DENIED` | access refused by the source |
-| `FAILED` | attempted and errored |
+| `SUCCESS` | Queried and returned results. Whether they are complete is a separate `completeness` question. |
+| `NO_RESULTS` | Queried, and genuinely nothing matched. Read it together with `coverage.zeroResultMeaning`, which says what an empty result means *for that source*. |
+| `NOT_ENABLED` | Switched off in this deployment; no request was made. |
+| `NEEDS_SETUP` | Missing dependency, path, runtime, or session, so it cannot be queried. `fixHint` gives the fix. |
+| `NOT_QUERIED` | No request was ever attempted (usually the overall deadline ran out). Distinct from "tried and failed", so it can be counted separately. |
+| `TIMEOUT` | The request went out but did not return in time. The result is unknown. |
+| `CHALLENGE_REQUIRED` | The upstream asked for human verification. This service does not bypass captchas or WAFs. |
+| `RATE_LIMITED` | Throttled by the upstream. Retrying later may succeed. |
+| `DENIED` | Access refused by the source (permissions or an expired session). |
+| `FAILED` | Attempted and errored. `reasonCode` and `explanation` say why. |
 
-`NO_RESULTS` is never returned bare. A local-index miss says so:
+Every record also carries `attempted`: `false` means no request was made at all. Both `NO_RESULTS` and `TIMEOUT` can look like "nothing found", but only the former means the upstream confirmed an empty result.
 
-> *"仅表示本地 SQLite/FTS 索引未命中，不代表 ClinicalTrials.gov 上不存在该试验。"*
+**Three channels need particular care when reading them:**
 
-...and ICTRP — which has documented silent gaps — is permanently flagged `isLowerBound: true`:
+- **CTV is a local index.** A miss means it is not in the local SQLite/FTS store, not that it is absent from ClinicalTrials.gov:
+  > 仅表示本地 SQLite/FTS 索引未命中，不代表 ClinicalTrials.gov 上不存在该试验。
 
-> *"上游标注结果不完整，估计缺失 N 条；ICTRP 导出存在已知静默缺口，零/少结果不能作为'不存在'的结论。"*
+- **ICTRP is a lower bound.** It is permanently flagged `isLowerBound: true`; its documented silent gaps mean a small or empty result cannot support "this does not exist":
+  > 上游标注结果不完整，估计缺失 N 条；ICTRP 导出存在已知静默缺口，零/少结果不能作为"不存在"的结论。
+
+- **The two offline snapshots declare a data cutoff** (see the next section). A trial registered after that cutoff is invisible in the snapshot, which is not the same as not existing.
 
 ## The seven MCP tools
 
@@ -270,7 +274,7 @@ browser profile.
 - Never prints a cookie value (only field names and a length fingerprint).
 - Secret-key redaction in every log and error path.
 - Evidence paths are confined to an allowlist of configured roots.
-- Does not convert "not found" into "does not exist" — see the honesty contract above.
+- Does not convert "not found" into "does not exist" — see "Reading the status codes" above.
 
 ## Project layout
 

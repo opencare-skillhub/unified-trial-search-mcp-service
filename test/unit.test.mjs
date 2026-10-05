@@ -284,3 +284,33 @@ test('sources: every offline archive declares how it is refreshed', async () => 
     assert.ok(descriptor.zeroResultMeaning.includes('数据截止日'), `${id} zero-result meaning must mention the cutoff`);
   }
 });
+
+test('docs: the status table documents exactly the states the code can return', async () => {
+  // The status table is the contract a caller reads before deciding what a
+  // result means. A state added to the code but missing from the docs (or a
+  // documented state that no longer exists) is a silent lie about whether the
+  // service looked, so the two are pinned together here.
+  const { readFile } = await import('node:fs/promises');
+  const path = await import('node:path');
+  const { ROOT } = await import('./helpers.mjs');
+  const { SOURCE_STATES } = await load('core/types.js');
+  assert.equal(SOURCE_STATES.length, 10, 'the terminal-state set changed; update both READMEs');
+
+  for (const file of ['README.md', 'README.zh-CN.md']) {
+    const text = await readFile(path.join(ROOT, file), 'utf8');
+    const heading = file.endsWith('zh-CN.md') ? '## 状态码解读' : '## Reading the status codes';
+    const start = text.indexOf(heading);
+    assert.ok(start >= 0, `${file} must have a status-code section`);
+    const section = text.slice(start, text.indexOf('\n## ', start + 1));
+
+    for (const state of SOURCE_STATES) {
+      assert.ok(section.includes(`\`${state}\``), `${file} must document ${state}`);
+    }
+    // Only SUCCESS and NO_RESULTS mean the source was queried; the prose must
+    // say so, because that is the distinction the whole table exists for.
+    assert.ok(
+      section.includes('SUCCESS') && section.includes('NO_RESULTS'),
+      `${file} must state which states mean "queried"`,
+    );
+  }
+});

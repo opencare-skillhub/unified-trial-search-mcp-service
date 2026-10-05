@@ -94,6 +94,6 @@
 
   <!-- Output contract -->
   <rect x="40" y="702" width="1100" height="44" class="state"/>
-  <text x="60" y="722" class="t" fill="#92400e">Honesty contract — 10 terminal states. Only SUCCESS and NO_RESULTS mean "we actually looked".</text>
-  <text x="60" y="738" class="s" fill="#92400e">NO_RESULTS is never returned bare; ICTRP stays flagged isLowerBound. "I could not look" never becomes "it is not there".</text>
+  <text x="60" y="722" class="t" fill="#92400e">Terminal states — 10 of them. Only SUCCESS and NO_RESULTS mean the source was actually queried.</text>
+  <text x="60" y="738" class="s" fill="#92400e">The other eight mean no result came back from that channel, so none of them supports a conclusion about whether a trial exists.</text>
 </svg>
