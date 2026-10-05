@@ -80,6 +80,22 @@ Everything below is public; nothing needs a token, a session or a VPN.
 | `xyb_cde_pancreatic` | [xyb_cde_pancreatic.tar.gz](https://github.com/opencare-skillhub/unified-trial-search-mcp-service/releases/download/xyb_cde_pancreatic-2026-10-05/xyb_cde_pancreatic.tar.gz) | 11,032,155 B | `d1ccdac0ef5462a6` | `--xyb-archive` | `community_owned` |
 | `ctv_index` | [ctv_index.tar.gz](https://github.com/opencare-skillhub/unified-trial-search-mcp-service/releases/download/ctv_index-2026-10-05/ctv_index.tar.gz) | 23,964,370 B | `41f07ea5a0b7c1b8` | `--ctv-database` | `community_owned` |
 
+Full URLs, ready to paste into `curl -O`, a mirror script, or an offline download tool:
+
+```
+chictr_pancreatic    https://github.com/opencare-skillhub/unified-trial-search-mcp-service/releases/download/chictr_pancreatic-2026-10-05/chictr_pancreatic.tar.gz
+xyb_cde_pancreatic   https://github.com/opencare-skillhub/unified-trial-search-mcp-service/releases/download/xyb_cde_pancreatic-2026-10-05/xyb_cde_pancreatic.tar.gz
+ctv_index            https://github.com/opencare-skillhub/unified-trial-search-mcp-service/releases/download/ctv_index-2026-10-05/ctv_index.tar.gz
+```
+
+```bash
+# Fetch all three at once, then verify each against the manifest
+curl -LO https://github.com/opencare-skillhub/unified-trial-search-mcp-service/releases/download/chictr_pancreatic-2026-10-05/chictr_pancreatic.tar.gz
+curl -LO https://github.com/opencare-skillhub/unified-trial-search-mcp-service/releases/download/xyb_cde_pancreatic-2026-10-05/xyb_cde_pancreatic.tar.gz
+curl -LO https://github.com/opencare-skillhub/unified-trial-search-mcp-service/releases/download/ctv_index-2026-10-05/ctv_index.tar.gz
+shasum -a 256 *.tar.gz    # compare one by one with corpora/manifest.json
+```
+
 Full digests are in [`corpora/manifest.json`](corpora/manifest.json), which is the contract `fetch-corpus`
 enforces. Release pages: [chictr](https://github.com/opencare-skillhub/unified-trial-search-mcp-service/releases/tag/chictr_pancreatic-2026-10-05) ·
 [xyb_cde](https://github.com/opencare-skillhub/unified-trial-search-mcp-service/releases/tag/xyb_cde_pancreatic-2026-10-05) ·

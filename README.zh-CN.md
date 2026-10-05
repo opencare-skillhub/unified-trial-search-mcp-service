@@ -81,6 +81,22 @@
 | `xyb_cde_pancreatic` | [xyb_cde_pancreatic.tar.gz](https://github.com/opencare-skillhub/unified-trial-search-mcp-service/releases/download/xyb_cde_pancreatic-2026-10-05/xyb_cde_pancreatic.tar.gz) | 11,032,155 | `d1ccdac0ef5462a6` | `--xyb-archive` | `community_owned` |
 | `ctv_index` | [ctv_index.tar.gz](https://github.com/opencare-skillhub/unified-trial-search-mcp-service/releases/download/ctv_index-2026-10-05/ctv_index.tar.gz) | 23,964,370 | `41f07ea5a0b7c1b8` | `--ctv-database` | `community_owned` |
 
+完整 URL（可直接复制给 `curl -O`、内网镜像脚本，或离线下载工具）：
+
+```
+chictr_pancreatic    https://github.com/opencare-skillhub/unified-trial-search-mcp-service/releases/download/chictr_pancreatic-2026-10-05/chictr_pancreatic.tar.gz
+xyb_cde_pancreatic   https://github.com/opencare-skillhub/unified-trial-search-mcp-service/releases/download/xyb_cde_pancreatic-2026-10-05/xyb_cde_pancreatic.tar.gz
+ctv_index            https://github.com/opencare-skillhub/unified-trial-search-mcp-service/releases/download/ctv_index-2026-10-05/ctv_index.tar.gz
+```
+
+```bash
+# 一次性下齐，并逐条校验
+curl -LO https://github.com/opencare-skillhub/unified-trial-search-mcp-service/releases/download/chictr_pancreatic-2026-10-05/chictr_pancreatic.tar.gz
+curl -LO https://github.com/opencare-skillhub/unified-trial-search-mcp-service/releases/download/xyb_cde_pancreatic-2026-10-05/xyb_cde_pancreatic.tar.gz
+curl -LO https://github.com/opencare-skillhub/unified-trial-search-mcp-service/releases/download/ctv_index-2026-10-05/ctv_index.tar.gz
+shasum -a 256 *.tar.gz    # 与 corpora/manifest.json 逐条比对
+```
+
 完整摘要见 [`corpora/manifest.json`](corpora/manifest.json)，它同时也是 `fetch-corpus` 强制校验的契约。
 Release 页面：[chictr](https://github.com/opencare-skillhub/unified-trial-search-mcp-service/releases/tag/chictr_pancreatic-2026-10-05) ·
 [xyb_cde](https://github.com/opencare-skillhub/unified-trial-search-mcp-service/releases/tag/xyb_cde_pancreatic-2026-10-05) ·
