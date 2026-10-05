@@ -1,0 +1,1232 @@
+{
+  "search": {
+    "ms": 3187,
+    "isError": false,
+    "s": {
+      "schemaVersion": "1.0",
+      "query": {
+        "keyword": "ibi343",
+        "limit": 50,
+        "offset": 0
+      },
+      "statuses": [
+        {
+          "sourceId": "chinadrugtrials",
+          "sourceLabel": "ChinaDrugTrials（受控归档）",
+          "state": "NO_RESULTS",
+          "reasonCode": "EMPTY_RESULT_SET",
+          "explanation": "仅表示本地受控归档中无该关键词命中，不代表官网无该试验。",
+          "attempted": true,
+          "elapsedMs": 303,
+          "freshness": {
+            "kind": "controlled_session_archive",
+            "retrievedAt": "2026-10-05T07:38:44.244Z",
+            "staleAfterDays": 30,
+            "stale": false
+          },
+          "coverage": {
+            "scope": "本地受控增量归档；仅同步时联网，且需要合法的用户会话。",
+            "zeroResultMeaning": "仅表示本地受控归档中无该关键词命中，不代表官网无该试验。",
+            "indexOrArchiveOnly": true
+          },
+          "completeness": {
+            "isLowerBound": false,
+            "warnings": [
+              "ChinaDrugTrials 未返回结果表格；可能是关键词确实无命中，也可能是会话失效或被限流，请结合来源状态判断。"
+            ],
+            "upstreamReportedTotal": 0,
+            "rowsReturned": 0,
+            "recordsIncomplete": true
+          },
+          "resultCount": 0,
+          "truncated": false
+        },
+        {
+          "sourceId": "xyb_chinadrugtrials_archive",
+          "sourceLabel": "XYB ChinaDrugTrials 数据包（只读离线）",
+          "state": "SUCCESS",
+          "reasonCode": "OK",
+          "explanation": "来源返回 1 条记录。",
+          "attempted": true,
+          "elapsedMs": 128,
+          "freshness": {
+            "kind": "offline_archive",
+            "scrapedAt": "2026-09-29T08:02:52.730787",
+            "staleAfterDays": 90,
+            "stale": false
+          },
+          "coverage": {
+            "scope": "只读离线数据包，覆盖范围取决于包内查询关键词与页数。",
+            "zeroResultMeaning": "仅表示该离线数据包内无命中；本包是按关键词抓取的子集，不是全量 ChinaDrugTrials。",
+            "indexOrArchiveOnly": true
+          },
+          "completeness": {
+            "isLowerBound": false,
+            "warnings": [
+              "已跳过 2 个不可用数据包：B7-H3_CD276_招募中（缺少 summary.json 清单，视为未完成的采集快照）；FG-M108（缺少 summary.json 清单，视为未完成的采集快照）。这些包内的记录未纳入本次检索。",
+              "packages_skipped:2"
+            ],
+            "upstreamReportedTotal": 139,
+            "rowsReturned": 1,
+            "recordsIncomplete": true
+          },
+          "resultCount": 1,
+          "truncated": false,
+          "requestedLimit": 200
+        },
+        {
+          "sourceId": "chictr_online",
+          "sourceLabel": "ChiCTR 在线",
+          "state": "NO_RESULTS",
+          "reasonCode": "EMPTY_RESULT_SET",
+          "explanation": "仅表示本次在线查询无命中；结果依赖短期会话与缓存。",
+          "attempted": true,
+          "elapsedMs": 2994,
+          "freshness": {
+            "kind": "cached_network",
+            "retrievedAt": "2026-10-05T07:38:46.935Z",
+            "staleAfterDays": 7,
+            "stale": false
+          },
+          "coverage": {
+            "scope": "在线查询，受 WAF、会话有效期与限流约束。",
+            "zeroResultMeaning": "仅表示本次在线查询无命中；结果依赖短期会话与缓存。",
+            "indexOrArchiveOnly": false
+          },
+          "completeness": {
+            "isLowerBound": false,
+            "warnings": [],
+            "rowsReturned": 0,
+            "recordsIncomplete": false
+          },
+          "resultCount": 0,
+          "truncated": false
+        },
+        {
+          "sourceId": "chictr_pancreatic_archive",
+          "sourceLabel": "ChiCTR 胰腺癌离线语料",
+          "state": "NO_RESULTS",
+          "reasonCode": "EMPTY_RESULT_SET",
+          "explanation": "仅表示该胰腺癌专题语料内无命中；不覆盖 ChiCTR 全量，也不覆盖其他疾病领域。",
+          "attempted": true,
+          "elapsedMs": 23,
+          "freshness": {
+            "kind": "offline_archive",
+            "scrapedAt": "2026-10-04T22:29:13+08:00",
+            "staleAfterDays": 90,
+            "stale": false
+          },
+          "coverage": {
+            "scope": "仅胰腺癌专题离线语料，非 ChiCTR 全量。",
+            "zeroResultMeaning": "仅表示该胰腺癌专题语料内无命中；不覆盖 ChiCTR 全量，也不覆盖其他疾病领域。",
+            "indexOrArchiveOnly": true
+          },
+          "completeness": {
+            "isLowerBound": false,
+            "warnings": [
+              "本来源仅为胰腺癌专题离线语料，不覆盖 ChiCTR 全量，也不覆盖其他疾病领域。",
+              "该语料采集日志记录了 1 条详情抓取失败，相关记录字段可能不完整。"
+            ],
+            "upstreamReportedTotal": 0,
+            "rowsReturned": 0,
+            "recordsIncomplete": false
+          },
+          "resultCount": 0,
+          "truncated": false
+        },
+        {
+          "sourceId": "ctv",
+          "sourceLabel": "ClinicalTrials.gov（CTV 本地索引）",
+          "state": "SUCCESS",
+          "reasonCode": "OK",
+          "explanation": "来源返回 2 条记录。",
+          "attempted": true,
+          "elapsedMs": 3181,
+          "freshness": {
+            "kind": "local_index",
+            "retrievedAt": "2026-10-05T07:38:47.122Z",
+            "staleAfterDays": 30,
+            "stale": false
+          },
+          "coverage": {
+            "scope": "本地全文索引；未同步的记录不可见。",
+            "zeroResultMeaning": "仅表示本地 SQLite/FTS 索引未命中，不代表 ClinicalTrials.gov 上不存在该试验。",
+            "indexOrArchiveOnly": true
+          },
+          "completeness": {
+            "isLowerBound": false,
+            "warnings": [
+              "结果来自本地子集索引（覆盖 1434 条，其中 1434 条有完整详情），不代表 ctv.veeva.com 全集。"
+            ],
+            "upstreamReportedTotal": 2,
+            "rowsReturned": 2,
+            "recordsIncomplete": false
+          },
+          "resultCount": 2,
+          "truncated": false,
+          "requestedLimit": 200
+        },
+        {
+          "sourceId": "ictrp",
+          "sourceLabel": "WHO ICTRP",
+          "state": "SUCCESS",
+          "reasonCode": "OK",
+          "explanation": "来源返回 12 条记录。",
+          "attempted": true,
+          "elapsedMs": 305,
+          "freshness": {
+            "kind": "cached_network",
+            "retrievedAt": "2026-10-05T07:38:44.246Z",
+            "staleAfterDays": 7,
+            "stale": false
+          },
+          "coverage": {
+            "scope": "全球登记库聚合；已知上游结果不完整。",
+            "zeroResultMeaning": "仅表示本次 ICTRP 查询无返回；上游存在已知静默缺失，零结果不能作为“不存在”的结论。",
+            "indexOrArchiveOnly": false
+          },
+          "completeness": {
+            "isLowerBound": true,
+            "warnings": [
+              "上游结果集 set_id=search:37bd92cec9fbebae（可用于本地过滤，无需再次联网）。"
+            ],
+            "upstreamReportedTotal": 12,
+            "rowsReturned": 12,
+            "recordsIncomplete": false
+          },
+          "resultCount": 12,
+          "truncated": false,
+          "requestedLimit": 200
+        }
+      ],
+      "coverage": {
+        "queried": [
+          "chinadrugtrials",
+          "xyb_chinadrugtrials_archive",
+          "chictr_online",
+          "chictr_pancreatic_archive",
+          "ctv",
+          "ictrp"
+        ],
+        "unavailable": [],
+        "notQueried": []
+      },
+      "completeness": {
+        "isComplete": false,
+        "warnings": [
+          "chinadrugtrials: ChinaDrugTrials 未返回结果表格；可能是关键词确实无命中，也可能是会话失效或被限流，请结合来源状态判断。",
+          "xyb_chinadrugtrials_archive: 已跳过 2 个不可用数据包：B7-H3_CD276_招募中（缺少 summary.json 清单，视为未完成的采集快照）；FG-M108（缺少 summary.json 清单，视为未完成的采集快照）。这些包内的记录未纳入本次检索。",
+          "xyb_chinadrugtrials_archive: packages_skipped:2",
+          "chictr_pancreatic_archive: 本来源仅为胰腺癌专题离线语料，不覆盖 ChiCTR 全量，也不覆盖其他疾病领域。",
+          "chictr_pancreatic_archive: 该语料采集日志记录了 1 条详情抓取失败，相关记录字段可能不完整。",
+          "ctv: 结果来自本地子集索引（覆盖 1434 条，其中 1434 条有完整详情），不代表 ctv.veeva.com 全集。",
+          "ictrp: 上游结果集 set_id=search:37bd92cec9fbebae（可用于本地过滤，无需再次联网）。"
+        ]
+      },
+      "totalRecords": 13,
+      "records": [
+        {
+          "recordId": "ictrp:NCT05458219",
+          "source": {
+            "id": "ictrp",
+            "label": "WHO ICTRP",
+            "sourceRecordId": "NCT05458219"
+          },
+          "registryNumbers": [
+            {
+              "registry": "NCT",
+              "value": "NCT05458219",
+              "primary": true
+            }
+          ],
+          "provenance": {
+            "rawEvidenceRefs": [],
+            "piiLevel": "public_source_may_contain_pii",
+            "retrievedAt": "2026-10-05T07:38:44.246Z"
+          },
+          "title": "A First-in-human Study of IBI343 in Subjects With Locally Advanced Unresectable or Metastatic Solid Tumors",
+          "publicTitle": "A First-in-human Study of IBI343 in Subjects With Locally Advanced Unresectable or Metastatic Solid Tumors",
+          "conditionOrDisease": [
+            "Locally Advanced Unresectable or Metastatic Solid Tumors"
+          ],
+          "recruitmentStatus": "Recruiting",
+          "phase": [
+            "Phase 1"
+          ],
+          "countries": [
+            "United States",
+            "Australia",
+            "China",
+            "Australia",
+            "China",
+            "United States"
+          ],
+          "dates": {
+            "registered": "2022-07-11"
+          },
+          "sourceUrl": "https://trialsearch.who.int/Trial2.aspx?TrialID=NCT05458219"
+        },
+        {
+          "recordId": "ictrp:NCT06238843",
+          "source": {
+            "id": "ictrp",
+            "label": "WHO ICTRP",
+            "sourceRecordId": "NCT06238843"
+          },
+          "registryNumbers": [
+            {
+              "registry": "NCT",
+              "value": "NCT06238843",
+              "primary": true
+            }
+          ],
+          "provenance": {
+            "rawEvidenceRefs": [],
+            "piiLevel": "public_source_may_contain_pii",
+            "retrievedAt": "2026-10-05T07:38:44.246Z"
+          },
+          "title": "A Multicenter, Phase 3 Study of IBI343 Monotherapy Versus Treatment of Investigator's Choice in Subjects With Previously Treated, Claudin (CLDN) 18.2-positive, HER2-negative, Gastric or Gastroesophageal Junction Adenocarcinoma (G-HOPE-001)",
+          "publicTitle": "A Multicenter, Phase 3 Study of IBI343 Monotherapy Versus Treatment of Investigator's Choice in Subjects With Previously Treated, Claudin (CLDN) 18.2-positive, HER2-negative, Gastric or Gastroesophageal Junction Adenocarcinoma (G-HOPE-001)",
+          "conditionOrDisease": [
+            "Unresectable or Metastatic Gastric or Gastroesophageal Junction Adenocarcinoma"
+          ],
+          "recruitmentStatus": "Not recruiting",
+          "phase": [
+            "Phase 3"
+          ],
+          "countries": [
+            "China",
+            "Japan",
+            "China",
+            "Japan"
+          ],
+          "dates": {
+            "registered": "2024-01-25"
+          },
+          "sourceUrl": "https://trialsearch.who.int/Trial2.aspx?TrialID=NCT06238843"
+        },
+        {
+          "recordId": "ctv:UTN000552084",
+          "source": {
+            "id": "ctv",
+            "label": "ClinicalTrials.gov（CTV 本地索引）",
+            "sourceRecordId": "UTN000552084"
+          },
+          "registryNumbers": [
+            {
+              "registry": "NCT",
+              "value": "NCT07066098",
+              "primary": true
+            },
+            {
+              "registry": "UTN",
+              "value": "UTN000552084",
+              "primary": true
+            }
+          ],
+          "provenance": {
+            "rawEvidenceRefs": [],
+            "piiLevel": "public_source_may_contain_pii",
+            "retrievedAt": "2026-10-05T07:38:47.122Z"
+          },
+          "title": "A Multicenter, Randomized, Double-Blind, Phase III Study of IBI343 Monotherapy Plus Best Supportive Care Versus Placebo Plus Best Supportive Care in Participants With Claudin (CLDN) 18.2-Positive, Locally Advanced Unresectable or Metastatic Pancreatic Cancer Who Received>=2 Prior Lines of Therapy",
+          "publicTitle": "A Multicenter Study of IBI343 Monotherapy Versus Placebo in Subjects With Previously Treated, Claudin (CLDN) 18.2-positive, Pancreatic Cancer(G-HOPE-002)",
+          "conditionOrDisease": [
+            "Pancreatic Neoplasms",
+            "Pancreatic Cancer"
+          ],
+          "recruitmentStatus": "Recruiting",
+          "phase": [
+            "Phase 3"
+          ],
+          "sponsorOrInstitution": [
+            "Innovent Biologics"
+          ],
+          "countries": [
+            "China"
+          ],
+          "dates": {
+            "registered": "2025-08-04",
+            "updated": "2025-08-15"
+          },
+          "sourceUrl": "https://ctv.veeva.com/study/a-multicenter-study-of-ibi343-monotherapy-versus-placebo-in-subjects-with-previously-treated-claudi",
+          "mergedFrom": [
+            "ctv:UTN000552084",
+            "ictrp:NCT07066098"
+          ],
+          "sourceLabels": [
+            "ClinicalTrials.gov（CTV 本地索引）",
+            "WHO ICTRP"
+          ],
+          "perSource": [
+            {
+              "recordId": "ctv:UTN000552084",
+              "sourceId": "ctv",
+              "sourceRecordId": "UTN000552084"
+            },
+            {
+              "recordId": "ictrp:NCT07066098",
+              "sourceId": "ictrp",
+              "sourceRecordId": "NCT07066098"
+            }
+          ]
+        },
+        {
+          "recordId": "ictrp:JPRN-jRCT2031240503",
+          "source": {
+            "id": "ictrp",
+            "label": "WHO ICTRP",
+            "sourceRecordId": "JPRN-jRCT2031240503"
+          },
+          "registryNumbers": [
+            {
+              "registry": "JPRN",
+              "value": "JPRNjRCT2031240503",
+              "primary": true
+            }
+          ],
+          "provenance": {
+            "rawEvidenceRefs": [],
+            "piiLevel": "public_source_may_contain_pii",
+            "retrievedAt": "2026-10-05T07:38:44.246Z"
+          },
+          "title": "A Multicenter, Randomized, Open-label, Phase 3 Study of IBI343 Monotherapy Versus Treatment of Investigator's Choice in Participants with Previously Treated, Claudin (CLDN)18.2-positive, HER2-negative, Locally Advanced, Unresectable or Metastatic Gastric or Gastroesophageal Junction Adenocarcinoma",
+          "publicTitle": "A Multicenter, Randomized, Open-label, Phase 3 Study of IBI343 Monotherapy Versus Treatment of Investigator's Choice in Participants with Previously Treated, Claudin (CLDN)18.2-positive, HER2-negative, Locally Advanced, Unresectable or Metastatic Gastric or Gastroesophageal Junction Adenocarcinoma",
+          "conditionOrDisease": [
+            "Gastric and gastroesophageal junction adenocarcinoma"
+          ],
+          "recruitmentStatus": "Recruiting",
+          "phase": [
+            "Phase 3"
+          ],
+          "countries": [
+            "China",
+            "Japan"
+          ],
+          "dates": {
+            "registered": "2024-11-22"
+          },
+          "sourceUrl": "https://trialsearch.who.int/Trial2.aspx?TrialID=JPRN-jRCT2031240503"
+        },
+        {
+          "recordId": "ctv:UTN000584162",
+          "source": {
+            "id": "ctv",
+            "label": "ClinicalTrials.gov（CTV 本地索引）",
+            "sourceRecordId": "UTN000584162"
+          },
+          "registryNumbers": [
+            {
+              "registry": "NCT",
+              "value": "NCT07483554",
+              "primary": true
+            },
+            {
+              "registry": "UTN",
+              "value": "UTN000584162",
+              "primary": true
+            }
+          ],
+          "provenance": {
+            "rawEvidenceRefs": [],
+            "piiLevel": "public_source_may_contain_pii",
+            "retrievedAt": "2026-10-05T07:38:47.122Z"
+          },
+          "title": "A Phase II Study to Evaluate the Safety, Tolerability, Pharmacokinetics, and Efficacy of IBI343 in Combination Therapy for Patients With Advanced Malignant Solid Tumors.",
+          "publicTitle": "IBI343 in Combination Therapy for Advanced Malignant Solid Tumors",
+          "conditionOrDisease": [
+            "Gastric/Gastroesophageal Junction Adenocarcinoma",
+            "CLDN18.2 Positive",
+            "Pancreatic Ductal Adenocarcinoma"
+          ],
+          "recruitmentStatus": "Recruiting",
+          "phase": [
+            "Phase 2"
+          ],
+          "sponsorOrInstitution": [
+            "Innovent Biologics"
+          ],
+          "countries": [
+            "China"
+          ],
+          "dates": {
+            "registered": "2026-04-20",
+            "updated": "2026-06-03"
+          },
+          "sourceUrl": "https://ctv.veeva.com/study/ibi343-in-combination-therapy-for-advanced-malignant-solid-tumors",
+          "mergedFrom": [
+            "ctv:UTN000584162",
+            "ictrp:NCT07483554"
+          ],
+          "sourceLabels": [
+            "ClinicalTrials.gov（CTV 本地索引）",
+            "WHO ICTRP"
+          ],
+          "perSource": [
+            {
+              "recordId": "ctv:UTN000584162",
+              "sourceId": "ctv",
+              "sourceRecordId": "UTN000584162"
+            },
+            {
+              "recordId": "ictrp:NCT07483554",
+              "sourceId": "ictrp",
+              "sourceRecordId": "NCT07483554"
+            }
+          ]
+        },
+        {
+          "recordId": "ictrp:NCT07415525",
+          "source": {
+            "id": "ictrp",
+            "label": "WHO ICTRP",
+            "sourceRecordId": "NCT07415525"
+          },
+          "registryNumbers": [
+            {
+              "registry": "NCT",
+              "value": "NCT07415525",
+              "primary": true
+            }
+          ],
+          "provenance": {
+            "rawEvidenceRefs": [],
+            "piiLevel": "public_source_may_contain_pii",
+            "retrievedAt": "2026-10-05T07:38:44.246Z"
+          },
+          "title": "IBI343 Combined With Chemotherapy as Neoadjuvant Therapy in Borderline Resectable Pancreatic Cancer",
+          "publicTitle": "IBI343 Combined With Chemotherapy as Neoadjuvant Therapy in Borderline Resectable Pancreatic Cancer",
+          "conditionOrDisease": [
+            "Pancreatic Cancer",
+            "Borderline Resectable Pancreatic Adenocarcinoma"
+          ],
+          "recruitmentStatus": "Not recruiting",
+          "phase": [
+            "Phase 2"
+          ],
+          "countries": [
+            "China"
+          ],
+          "dates": {
+            "registered": "2026-02-10"
+          },
+          "sourceUrl": "https://trialsearch.who.int/Trial2.aspx?TrialID=NCT07415525"
+        },
+        {
+          "recordId": "ictrp:NCT06770439",
+          "source": {
+            "id": "ictrp",
+            "label": "WHO ICTRP",
+            "sourceRecordId": "NCT06770439"
+          },
+          "registryNumbers": [
+            {
+              "registry": "NCT",
+              "value": "NCT06770439",
+              "primary": true
+            }
+          ],
+          "provenance": {
+            "rawEvidenceRefs": [],
+            "piiLevel": "public_source_may_contain_pii",
+            "retrievedAt": "2026-10-05T07:38:44.246Z"
+          },
+          "title": "IBI343 Combined With Chemotherapy in Advanced Pancreatic Cancer",
+          "publicTitle": "IBI343 Combined With Chemotherapy in Advanced Pancreatic Cancer",
+          "conditionOrDisease": [
+            "Advanced Pancreatic Cancers"
+          ],
+          "recruitmentStatus": "Recruiting",
+          "phase": [
+            "Phase 2"
+          ],
+          "countries": [
+            "China"
+          ],
+          "dates": {
+            "registered": "2025-01-07"
+          },
+          "sourceUrl": "https://trialsearch.who.int/Trial2.aspx?TrialID=NCT06770439"
+        },
+        {
+          "recordId": "ictrp:NCT07692750",
+          "source": {
+            "id": "ictrp",
+            "label": "WHO ICTRP",
+            "sourceRecordId": "NCT07692750"
+          },
+          "registryNumbers": [
+            {
+              "registry": "NCT",
+              "value": "NCT07692750",
+              "primary": true
+            }
+          ],
+          "provenance": {
+            "rawEvidenceRefs": [],
+            "piiLevel": "public_source_may_contain_pii",
+            "retrievedAt": "2026-10-05T07:38:44.246Z"
+          },
+          "title": "IBI343 Combined With Chemotherapy in Advanced Pancreatic Cancer",
+          "publicTitle": "IBI343 Combined With Chemotherapy in Advanced Pancreatic Cancer",
+          "conditionOrDisease": [
+            "Advanced Pancreatic Cancer"
+          ],
+          "recruitmentStatus": "Recruiting",
+          "phase": [
+            "Phase I/II"
+          ],
+          "countries": [
+            "China"
+          ],
+          "dates": {
+            "registered": "2025-04-26"
+          },
+          "sourceUrl": "https://trialsearch.who.int/Trial2.aspx?TrialID=NCT07692750"
+        },
+        {
+          "recordId": "ictrp:NCT07025889",
+          "source": {
+            "id": "ictrp",
+            "label": "WHO ICTRP",
+            "sourceRecordId": "NCT07025889"
+          },
+          "registryNumbers": [
+            {
+              "registry": "NCT",
+              "value": "NCT07025889",
+              "primary": true
+            }
+          ],
+          "provenance": {
+            "rawEvidenceRefs": [],
+            "piiLevel": "public_source_may_contain_pii",
+            "retrievedAt": "2026-10-05T07:38:44.246Z"
+          },
+          "title": "IBI343 Combined With Sintilimab Plus Chemotherapy in Gastric Cancer",
+          "publicTitle": "IBI343 Combined With Sintilimab Plus Chemotherapy in Gastric Cancer",
+          "conditionOrDisease": [
+            "Gastric Cancer"
+          ],
+          "recruitmentStatus": "Recruiting",
+          "phase": [
+            "Phase I/II"
+          ],
+          "countries": [
+            "China"
+          ],
+          "dates": {
+            "registered": "2025-06-05"
+          },
+          "sourceUrl": "https://trialsearch.who.int/Trial2.aspx?TrialID=NCT07025889"
+        },
+        {
+          "recordId": "ictrp:NCT07483567",
+          "source": {
+            "id": "ictrp",
+            "label": "WHO ICTRP",
+            "sourceRecordId": "NCT07483567"
+          },
+          "registryNumbers": [
+            {
+              "registry": "NCT",
+              "value": "NCT07483567",
+              "primary": true
+            }
+          ],
+          "provenance": {
+            "rawEvidenceRefs": [],
+            "piiLevel": "public_source_may_contain_pii",
+            "retrievedAt": "2026-10-05T07:38:44.246Z"
+          },
+          "title": "IBI343 in Combination With Sintilimab and SOX Regimen for Perioperative Treatment of Resectable, Locally Advanced Gastric or Gastroesophageal Junction Adenocarcinoma",
+          "publicTitle": "IBI343 in Combination With Sintilimab and SOX Regimen for Perioperative Treatment of Resectable, Locally Advanced Gastric or Gastroesophageal Junction Adenocarcinoma",
+          "conditionOrDisease": [
+            "CLDN18.2 Positive",
+            "Primary Gastric Adenocarcinoma",
+            "Gastroesophageal Junction Adenocarcinoma"
+          ],
+          "recruitmentStatus": "Recruiting",
+          "phase": [
+            "Phase 2"
+          ],
+          "countries": [
+            "China"
+          ],
+          "dates": {
+            "registered": "2026-03-16"
+          },
+          "sourceUrl": "https://trialsearch.who.int/Trial2.aspx?TrialID=NCT07483567"
+        },
+        {
+          "recordId": "xyb_chinadrugtrials_archive:CTR20252528",
+          "source": {
+            "id": "xyb_chinadrugtrials_archive",
+            "label": "XYB ChinaDrugTrials 数据包（只读离线）",
+            "sourceRecordId": "CTR20252528"
+          },
+          "registryNumbers": [
+            {
+              "registry": "CTR",
+              "value": "CTR20252528",
+              "primary": true
+            },
+            {
+              "registry": "CTR",
+              "value": "CTR20230213"
+            },
+            {
+              "registry": "CTR",
+              "value": "CTR20240639"
+            }
+          ],
+          "provenance": {
+            "rawEvidenceRefs": [
+              {
+                "kind": "raw_html",
+                "path": "output/胰腺癌/raw/CTR20252528_detail.html",
+                "contentHash": "03558e37eb79d3a02964b62093f50f0438636a6f028e00dd35626d65e161de35"
+              }
+            ],
+            "piiLevel": "public_source_may_contain_pii",
+            "scrapedAt": "2026-09-29T08:02:52.730787",
+            "contentHash": "03558e37eb79d3a02964b62093f50f0438636a6f028e00dd35626d65e161de35"
+          },
+          "title": "IBI343单药联合最佳支持治疗对比安慰剂联合最佳支持治疗用于既往接受过至少两线系统性治疗的Claudin(CLDN)18.2阳性、局部晚期不可切除或转移性胰腺癌受试者的多中心、随机、双盲、对照III期研究",
+          "publicTitle": "IBI343治疗Claudin(CLDN)18.2阳性的晚期胰腺癌III期研究",
+          "conditionOrDisease": [
+            "晚期胰腺癌"
+          ],
+          "interventions": [
+            "注射用重组抗紧密连接蛋白18.2单克隆抗体 -依喜替康偶联物（IBI343）"
+          ],
+          "studyType": "生物制品",
+          "recruitmentStatus": "进行中",
+          "sponsorOrInstitution": [
+            "1"
+          ],
+          "dates": {
+            "registered": "2025-06-27",
+            "updated": "2026-09-29T07:57:45.567499"
+          },
+          "sourceUrl": "https://www.chinadrugtrials.org.cn/clinicaltrials.searchlistdetail.dhtml"
+        },
+        {
+          "recordId": "ictrp:ChiCTR2300077564",
+          "source": {
+            "id": "ictrp",
+            "label": "WHO ICTRP",
+            "sourceRecordId": "ChiCTR2300077564"
+          },
+          "registryNumbers": [
+            {
+              "registry": "CHICTR",
+              "value": "ChiCTR2300077564",
+              "primary": true
+            }
+          ],
+          "provenance": {
+            "rawEvidenceRefs": [],
+            "piiLevel": "public_source_may_contain_pii",
+            "retrievedAt": "2026-10-05T07:38:44.246Z"
+          },
+          "title": "Safety, tolerability and efficacy of IBI343 in combination with sintilimab in subjects with advanced gastric/gastro- Esophageal junction adenocarcinoma: A Phase II study",
+          "publicTitle": "Safety, tolerability and efficacy of IBI343 in combination with sintilimab in subjects with advanced gastric/gastro- Esophageal junction adenocarcinoma: A Phase II study",
+          "conditionOrDisease": [
+            "Gastric/gastro- Esophageal Junction Adenocarcinoma"
+          ],
+          "recruitmentStatus": "Not Recruiting",
+          "phase": [
+            "Phase 2"
+          ],
+          "countries": [
+            "China"
+          ],
+          "dates": {
+            "registered": "2023-11-13"
+          },
+          "sourceUrl": "https://trialsearch.who.int/Trial2.aspx?TrialID=ChiCTR2300077564"
+        },
+        {
+          "recordId": "ictrp:NCT06321913",
+          "source": {
+            "id": "ictrp",
+            "label": "WHO ICTRP",
+            "sourceRecordId": "NCT06321913"
+          },
+          "registryNumbers": [
+            {
+              "registry": "NCT",
+              "value": "NCT06321913",
+              "primary": true
+            }
+          ],
+          "provenance": {
+            "rawEvidenceRefs": [],
+            "piiLevel": "public_source_may_contain_pii",
+            "retrievedAt": "2026-10-05T07:38:44.246Z"
+          },
+          "title": "Study of IBI343 in Subjects With Advanced Gastric/Gastroesophageal Junction Adenocarcinoma",
+          "publicTitle": "Study of IBI343 in Subjects With Advanced Gastric/Gastroesophageal Junction Adenocarcinoma",
+          "conditionOrDisease": [
+            "Advanced Gastric/Gastroesophageal Junction Adenocarcinoma"
+          ],
+          "recruitmentStatus": "Not recruiting",
+          "phase": [
+            "Phase 2"
+          ],
+          "dates": {
+            "registered": "2024-02-23"
+          },
+          "sourceUrl": "https://trialsearch.who.int/Trial2.aspx?TrialID=NCT06321913"
+        }
+      ],
+      "overlaps": [
+        {
+          "registryNumber": "NCT:NCT07066098",
+          "recordIds": [
+            "ctv:UTN000552084",
+            "ictrp:NCT07066098"
+          ],
+          "mergeApplied": true
+        },
+        {
+          "registryNumber": "NCT:NCT07483554",
+          "recordIds": [
+            "ctv:UTN000584162",
+            "ictrp:NCT07483554"
+          ],
+          "mergeApplied": true
+        }
+      ],
+      "startedAt": "2026-10-05T07:38:43.940Z",
+      "elapsedMs": 3184,
+      "cancelled": false,
+      "disclaimer": "本响应仅汇总已配置来源的检索结果，不等于全网或官网全量。来源终态为 SUCCESS/NO_RESULTS 之外的渠道均未被成功查询，其缺失不得解读为“不存在相关试验”。所有结论须回溯来源原文并由人工核验，本服务不提供医疗建议。"
+    }
+  },
+  "details": [
+    {
+      "recordId": "ictrp:NCT05458219",
+      "isError": false,
+      "ms": 202,
+      "keys": [
+        "sourceRecordId",
+        "registryNumbers",
+        "publicTitle",
+        "title",
+        "conditionOrDisease",
+        "recruitmentStatus",
+        "phase",
+        "countries",
+        "dates",
+        "sourceUrl"
+      ],
+      "warnings": []
+    },
+    {
+      "recordId": "ictrp:NCT06238843",
+      "isError": false,
+      "ms": 413,
+      "keys": [
+        "sourceRecordId",
+        "registryNumbers",
+        "publicTitle",
+        "title",
+        "conditionOrDisease",
+        "recruitmentStatus",
+        "phase",
+        "countries",
+        "dates",
+        "sourceUrl"
+      ],
+      "warnings": []
+    },
+    {
+      "recordId": "ctv:UTN000552084",
+      "isError": false,
+      "ms": 3217,
+      "keys": [
+        "sourceRecordId",
+        "registryNumbers",
+        "title",
+        "publicTitle",
+        "conditionOrDisease",
+        "recruitmentStatus",
+        "phase"
+      ],
+      "warnings": [
+        "上游详情来源：l2。"
+      ]
+    },
+    {
+      "recordId": "ictrp:JPRN-jRCT2031240503",
+      "isError": false,
+      "ms": 194,
+      "keys": [
+        "sourceRecordId",
+        "registryNumbers",
+        "publicTitle",
+        "title",
+        "conditionOrDisease",
+        "recruitmentStatus",
+        "phase",
+        "countries",
+        "dates",
+        "sourceUrl"
+      ],
+      "warnings": []
+    },
+    {
+      "recordId": "ctv:UTN000584162",
+      "isError": false,
+      "ms": 2617,
+      "keys": [
+        "sourceRecordId",
+        "registryNumbers",
+        "title",
+        "publicTitle",
+        "recruitmentStatus",
+        "phase"
+      ],
+      "warnings": [
+        "上游详情来源：l2。"
+      ]
+    },
+    {
+      "recordId": "ictrp:NCT07415525",
+      "isError": false,
+      "ms": 203,
+      "keys": [
+        "sourceRecordId",
+        "registryNumbers",
+        "publicTitle",
+        "title",
+        "conditionOrDisease",
+        "recruitmentStatus",
+        "phase",
+        "countries",
+        "dates",
+        "sourceUrl"
+      ],
+      "warnings": []
+    }
+  ],
+  "evidence": [
+    {
+      "recordId": "ictrp:NCT05458219",
+      "isError": false,
+      "ms": 207,
+      "refs": [
+        {
+          "kind": "field_excerpt",
+          "path": "ictrp:NCT05458219",
+          "excerpt": 498,
+          "unavailable": null
+        },
+        {
+          "kind": "field_excerpt",
+          "path": "ictrp:NCT05458219/provenance",
+          "excerpt": 0,
+          "unavailable": "ICTRP 为在线聚合检索，本服务不保存其原始页面快照；请通过来源链接回溯原文。"
+        },
+        {
+          "kind": "source_json",
+          "path": "/Users/qinxiaoqiang/Downloads/ictrp-mcp-service/cache",
+          "excerpt": 0,
+          "unavailable": "上游 ICTRP 服务的本地结果集缓存由该服务自行管理，本服务只读引用其路径。"
+        }
+      ]
+    },
+    {
+      "recordId": "ictrp:NCT06238843",
+      "isError": false,
+      "ms": 291,
+      "refs": [
+        {
+          "kind": "field_excerpt",
+          "path": "ictrp:NCT06238843",
+          "excerpt": 617,
+          "unavailable": null
+        },
+        {
+          "kind": "field_excerpt",
+          "path": "ictrp:NCT06238843/provenance",
+          "excerpt": 0,
+          "unavailable": "ICTRP 为在线聚合检索，本服务不保存其原始页面快照；请通过来源链接回溯原文。"
+        },
+        {
+          "kind": "source_json",
+          "path": "/Users/qinxiaoqiang/Downloads/ictrp-mcp-service/cache",
+          "excerpt": 0,
+          "unavailable": "上游 ICTRP 服务的本地结果集缓存由该服务自行管理，本服务只读引用其路径。"
+        }
+      ]
+    },
+    {
+      "recordId": "ctv:UTN000552084",
+      "isError": false,
+      "ms": 2635,
+      "refs": [
+        {
+          "kind": "field_excerpt",
+          "path": "ctv:UTN000552084",
+          "excerpt": 4000,
+          "unavailable": null
+        }
+      ]
+    },
+    {
+      "recordId": "ictrp:JPRN-jRCT2031240503",
+      "isError": false,
+      "ms": 190,
+      "refs": [
+        {
+          "kind": "field_excerpt",
+          "path": "ictrp:JPRN-jRCT2031240503",
+          "excerpt": 625,
+          "unavailable": null
+        },
+        {
+          "kind": "field_excerpt",
+          "path": "ictrp:JPRN-jRCT2031240503/provenance",
+          "excerpt": 0,
+          "unavailable": "ICTRP 为在线聚合检索，本服务不保存其原始页面快照；请通过来源链接回溯原文。"
+        },
+        {
+          "kind": "source_json",
+          "path": "/Users/qinxiaoqiang/Downloads/ictrp-mcp-service/cache",
+          "excerpt": 0,
+          "unavailable": "上游 ICTRP 服务的本地结果集缓存由该服务自行管理，本服务只读引用其路径。"
+        }
+      ]
+    },
+    {
+      "recordId": "ctv:UTN000584162",
+      "isError": false,
+      "ms": 2832,
+      "refs": [
+        {
+          "kind": "field_excerpt",
+          "path": "ctv:UTN000584162",
+          "excerpt": 4000,
+          "unavailable": null
+        }
+      ]
+    },
+    {
+      "recordId": "ictrp:NCT07415525",
+      "isError": false,
+      "ms": 198,
+      "refs": [
+        {
+          "kind": "field_excerpt",
+          "path": "ictrp:NCT07415525",
+          "excerpt": 440,
+          "unavailable": null
+        },
+        {
+          "kind": "field_excerpt",
+          "path": "ictrp:NCT07415525/provenance",
+          "excerpt": 0,
+          "unavailable": "ICTRP 为在线聚合检索，本服务不保存其原始页面快照；请通过来源链接回溯原文。"
+        },
+        {
+          "kind": "source_json",
+          "path": "/Users/qinxiaoqiang/Downloads/ictrp-mcp-service/cache",
+          "excerpt": 0,
+          "unavailable": "上游 ICTRP 服务的本地结果集缓存由该服务自行管理，本服务只读引用其路径。"
+        }
+      ]
+    }
+  ],
+  "status": {
+    "ms": 809,
+    "isError": false,
+    "s": {
+      "statuses": [
+        {
+          "sourceId": "chinadrugtrials",
+          "sourceLabel": "ChinaDrugTrials（受控归档）",
+          "state": "SUCCESS",
+          "reasonCode": "OK_WITH_LOCAL_ARCHIVE",
+          "explanation": "已配置会话 Cookie，且存在本地归档；查询优先使用本地归档，避免不必要的在线抓取。",
+          "attempted": true,
+          "elapsedMs": 1,
+          "freshness": {
+            "kind": "controlled_session_archive",
+            "staleAfterDays": 30
+          },
+          "coverage": {
+            "scope": "本地受控增量归档；仅同步时联网，且需要合法的用户会话。",
+            "zeroResultMeaning": "仅表示本地受控归档中无该关键词命中，不代表官网无该试验。",
+            "indexOrArchiveOnly": false
+          },
+          "completeness": {
+            "isLowerBound": false,
+            "warnings": []
+          }
+        },
+        {
+          "sourceId": "xyb_chinadrugtrials_archive",
+          "sourceLabel": "XYB ChinaDrugTrials 数据包（只读离线）",
+          "state": "SUCCESS",
+          "reasonCode": "OK_WITH_WARNINGS",
+          "explanation": "可用数据包 1 个，覆盖关键词：胰腺癌。",
+          "attempted": true,
+          "elapsedMs": 1,
+          "freshness": {
+            "kind": "offline_archive",
+            "scrapedAt": "2026-09-29T08:02:52.730787",
+            "staleAfterDays": 90,
+            "stale": false
+          },
+          "coverage": {
+            "scope": "只读离线数据包，覆盖范围取决于包内查询关键词与页数。",
+            "zeroResultMeaning": "仅表示该离线数据包内无命中；本包是按关键词抓取的子集，不是全量 ChinaDrugTrials。",
+            "indexOrArchiveOnly": true
+          },
+          "completeness": {
+            "isLowerBound": false,
+            "warnings": []
+          }
+        },
+        {
+          "sourceId": "chictr_online",
+          "sourceLabel": "ChiCTR 在线",
+          "state": "SUCCESS",
+          "reasonCode": "OK",
+          "explanation": "ChiCTR 在线入口可用；检索受上游缓存与访问限流约束。",
+          "attempted": true,
+          "elapsedMs": 494,
+          "freshness": {
+            "kind": "cached_network",
+            "staleAfterDays": 7
+          },
+          "coverage": {
+            "scope": "在线查询，受 WAF、会话有效期与限流约束。",
+            "zeroResultMeaning": "仅表示本次在线查询无命中；结果依赖短期会话与缓存。",
+            "indexOrArchiveOnly": false
+          },
+          "completeness": {
+            "isLowerBound": false,
+            "warnings": []
+          }
+        },
+        {
+          "sourceId": "chictr_pancreatic_archive",
+          "sourceLabel": "ChiCTR 胰腺癌离线语料",
+          "state": "SUCCESS",
+          "reasonCode": "OK",
+          "explanation": "离线语料可用，共 468 条胰腺癌专题记录。",
+          "attempted": true,
+          "elapsedMs": 312,
+          "freshness": {
+            "kind": "offline_archive",
+            "scrapedAt": "2026-10-04T22:29:13+08:00",
+            "staleAfterDays": 90,
+            "stale": false
+          },
+          "coverage": {
+            "scope": "仅胰腺癌专题离线语料，非 ChiCTR 全量。",
+            "zeroResultMeaning": "仅表示该胰腺癌专题语料内无命中；不覆盖 ChiCTR 全量，也不覆盖其他疾病领域。",
+            "indexOrArchiveOnly": true
+          },
+          "completeness": {
+            "isLowerBound": false,
+            "warnings": []
+          }
+        },
+        {
+          "sourceId": "ctv",
+          "sourceLabel": "ClinicalTrials.gov（CTV 本地索引）",
+          "state": "SUCCESS",
+          "reasonCode": "OK",
+          "explanation": "CTV 上游入口可用；检索基于本地子集索引，零命中只代表本地索引未命中。",
+          "attempted": true,
+          "elapsedMs": 0,
+          "freshness": {
+            "kind": "local_index",
+            "staleAfterDays": 30
+          },
+          "coverage": {
+            "scope": "本地全文索引；未同步的记录不可见。",
+            "zeroResultMeaning": "仅表示本地 SQLite/FTS 索引未命中，不代表 ClinicalTrials.gov 上不存在该试验。",
+            "indexOrArchiveOnly": true
+          },
+          "completeness": {
+            "isLowerBound": false,
+            "warnings": []
+          }
+        },
+        {
+          "sourceId": "ictrp",
+          "sourceLabel": "WHO ICTRP",
+          "state": "SUCCESS",
+          "reasonCode": "OK",
+          "explanation": "ICTRP 上游入口可用；注意上游导出存在已知静默缺口。",
+          "attempted": true,
+          "elapsedMs": 1,
+          "freshness": {
+            "kind": "cached_network",
+            "staleAfterDays": 7
+          },
+          "coverage": {
+            "scope": "全球登记库聚合；已知上游结果不完整。",
+            "zeroResultMeaning": "仅表示本次 ICTRP 查询无返回；上游存在已知静默缺失，零结果不能作为“不存在”的结论。",
+            "indexOrArchiveOnly": false
+          },
+          "completeness": {
+            "isLowerBound": true,
+            "warnings": []
+          }
+        }
+      ],
+      "summary": {
+        "total": 6,
+        "ready": 6,
+        "needsSetup": 0,
+        "notEnabled": 0,
+        "other": 0
+      },
+      "note": "来源状态与检索无关：SUCCESS 表示入口与数据依赖就绪，不代表该来源已包含目标试验。"
+    }
+  },
+  "maintenance": [
+    {
+      "tool": "refresh_ictrp",
+      "isError": false,
+      "state": "NOT_QUERIED",
+      "reasonCode": "DRY_RUN",
+      "ms": 213
+    },
+    {
+      "tool": "sync_ctv_index",
+      "isError": false,
+      "state": "NOT_QUERIED",
+      "reasonCode": "DRY_RUN",
+      "ms": 1
+    },
+    {
+      "tool": "sync_chinadrugtrials",
+      "isError": false,
+      "state": "NOT_QUERIED",
+      "reasonCode": "DRY_RUN",
+      "ms": 0
+    }
+  ],
+  "errors": {
+    "no-query": {
+      "isError": true,
+      "error": "QUERY_REQUIRED"
+    },
+    "bad-source": {
+      "isError": true,
+      "error": "UNKNOWN_SOURCE"
+    },
+    "bad-handle": {
+      "isError": true,
+      "error": "INVALID_RECORD_ID"
+    }
+  }
+}

@@ -1,0 +1,12 @@
+node_modules/
+dist/
+*.log
+
+# Never commit credentials or machine-local state.
+unified-trial-mcp.config.json
+cookie.env
+*.cookie.env
+
+# Ephemeral probes / scratch output.
+tmp/
+.DS_Store

@@ -1,0 +1,438 @@
+/**
+ * Orchestrator (SPEC 3.3, 5.2, 7.1).
+ *
+ * Guarantees:
+ *  - bounded concurrency (default 4) and a global wall-clock deadline (75s)
+ *  - longest-processing-time-first start order so slow sources are not starved
+ *  - every registered source ends in exactly one terminal SourceState
+ *  - a failing source never prevents other sources from returning
+ *  - errors are never folded into "zero results"
+ */
+
+import {
+  AdapterError,
+  type AdapterContext,
+  type AdapterSearchResult,
+  type CanonicalQuery,
+  type CanonicalTrialRecord,
+  type ResolvedPaths,
+  type SecretAccessor,
+  type Logger,
+  type SourceConclusion,
+  type SourceDescriptor,
+  type SourceId,
+  type SourceState,
+  type TrialSourceAdapter,
+  type UnifiedSearchResponse,
+  wasQueried,
+} from './types.js';
+import { getDescriptor, registryOrder, resolveRequestedSources, scheduleLongestFirst } from './registry.js';
+import { normalizeRecord } from './normalizer.js';
+import { mergeRecords, type MergeResult } from './merger.js';
+
+export const DEFAULT_CONCURRENCY = 4;
+export const DEFAULT_GLOBAL_DEADLINE_MS = 75_000;
+
+export const DISCLAIMER =
+  '本响应仅汇总已配置来源的检索结果，不等于全网或官网全量。来源终态为 SUCCESS/NO_RESULTS 之外的渠道均未被成功查询，' +
+  '其缺失不得解读为“不存在相关试验”。所有结论须回溯来源原文并由人工核验，本服务不提供医疗建议。';
+
+export interface OrchestratorOptions {
+  adapters: Map<SourceId, TrialSourceAdapter>;
+  paths: ResolvedPaths;
+  secrets: SecretAccessor;
+  logger: Logger;
+  concurrency?: number;
+  globalDeadlineMs?: number;
+  enabledSources?: Set<SourceId>;
+  now?: () => number;
+}
+
+export interface SearchOutcome extends UnifiedSearchResponse {
+  cancelled: boolean;
+}
+
+interface SourceRun {
+  descriptor: SourceDescriptor;
+  conclusion: SourceConclusion;
+  result?: AdapterSearchResult;
+}
+
+function freshnessFrom(result: AdapterSearchResult | undefined, descriptor: SourceDescriptor, nowMs: number): SourceConclusion['freshness'] {
+  const freshness: SourceConclusion['freshness'] = { kind: descriptor.freshness };
+  if (result?.retrievedAt) freshness.retrievedAt = result.retrievedAt;
+  if (result?.indexedAt) freshness.indexedAt = result.indexedAt;
+  if (result?.scrapedAt) freshness.scrapedAt = result.scrapedAt;
+  if (descriptor.staleAfterDays !== undefined) {
+    freshness.staleAfterDays = descriptor.staleAfterDays;
+    const stamp = result?.retrievedAt ?? result?.indexedAt ?? result?.scrapedAt;
+    if (stamp) {
+      const parsed = Date.parse(stamp);
+      if (!Number.isNaN(parsed)) {
+        const ageDays = (nowMs - parsed) / 86_400_000;
+        freshness.stale = ageDays > descriptor.staleAfterDays;
+      }
+    }
+  }
+  return freshness;
+}
+
+function baseConclusion(
+  descriptor: SourceDescriptor,
+  state: SourceState,
+  reasonCode: string,
+  explanation: string,
+  extras: Partial<SourceConclusion> = {},
+): SourceConclusion {
+  const conclusion: SourceConclusion = {
+    sourceId: descriptor.id,
+    sourceLabel: descriptor.label,
+    state,
+    reasonCode,
+    explanation,
+    attempted: false,
+    elapsedMs: 0,
+    freshness: { kind: descriptor.freshness },
+    coverage: {
+      scope: descriptor.scope,
+      zeroResultMeaning: descriptor.zeroResultMeaning,
+      indexOrArchiveOnly: descriptor.kind !== 'mcp' || descriptor.freshness !== 'cached_network',
+    },
+    completeness: {
+      isLowerBound: Boolean(descriptor.isLowerBound),
+      warnings: [],
+    },
+    ...extras,
+  };
+  if (descriptor.staleAfterDays !== undefined) conclusion.freshness.staleAfterDays = descriptor.staleAfterDays;
+  return conclusion;
+}
+
+export class Orchestrator {
+  private readonly options: OrchestratorOptions;
+
+  constructor(options: OrchestratorOptions) {
+    this.options = options;
+  }
+
+  private buildContext(descriptor: SourceDescriptor, signal: AbortSignal): AdapterContext {
+    return {
+      signal,
+      timeoutMs: descriptor.queryTimeoutMs,
+      paths: this.options.paths,
+      logger: this.options.logger,
+      secrets: this.options.secrets,
+    };
+  }
+
+  async search(query: CanonicalQuery): Promise<SearchOutcome> {
+    const now = this.options.now ?? (() => Date.now());
+    const startedMs = now();
+    const startedAt = new Date(startedMs).toISOString();
+
+    const enabled = this.options.enabledSources ?? new Set(this.options.adapters.keys());
+    const { sources, rejected } = resolveRequestedSources(query.sourceIds, enabled);
+
+    const concurrency = Math.max(1, this.options.concurrency ?? DEFAULT_CONCURRENCY);
+    const deadlineMs = this.options.globalDeadlineMs ?? DEFAULT_GLOBAL_DEADLINE_MS;
+
+    const runs = new Map<SourceId, SourceRun>();
+    for (const descriptor of sources) {
+      runs.set(descriptor.id, {
+        descriptor,
+        conclusion: baseConclusion(descriptor, 'NOT_QUERIED', 'OVERALL_DEADLINE', '未在总 deadline 前启动。'),
+      });
+    }
+
+    const scheduled = scheduleLongestFirst(sources);
+    const controller = new AbortController();
+    const warnings: string[] = [];
+    if (rejected.length) {
+      warnings.push(`已忽略未注册的来源筛选：${rejected.join(', ')}`);
+    }
+
+    const deadlineTimer = setTimeout(() => controller.abort(new Error('OVERALL_DEADLINE')), deadlineMs);
+    const deadlinePromise = new Promise<void>((resolve) => {
+      const check = () => {
+        if (controller.signal.aborted || now() - startedMs >= deadlineMs) resolve();
+        else setTimeout(check, 25);
+      };
+      setTimeout(check, 25);
+    });
+
+    const runSource = async (descriptor: SourceDescriptor): Promise<void> => {
+      const adapter = this.options.adapters.get(descriptor.id);
+      const run = runs.get(descriptor.id)!;
+      const sourceStart = now();
+
+      if (!adapter) {
+        run.conclusion = baseConclusion(descriptor, 'NOT_ENABLED', 'ADAPTER_NOT_REGISTERED', '该来源未在运行时注册适配器。', {
+          attempted: false,
+        });
+        return;
+      }
+
+      const remaining = deadlineMs - (now() - startedMs);
+      if (remaining <= 0) {
+        run.conclusion = baseConclusion(descriptor, 'NOT_QUERIED', 'OVERALL_DEADLINE', '总 deadline 已到，未启动该来源。');
+        return;
+      }
+
+      const timeoutMs = Math.min(descriptor.queryTimeoutMs, remaining);
+      const sourceController = new AbortController();
+      const onAbort = () => sourceController.abort(controller.signal.reason);
+      controller.signal.addEventListener('abort', onAbort, { once: true });
+      const timer = setTimeout(() => sourceController.abort(new Error('SOURCE_TIMEOUT')), timeoutMs);
+
+      const context = this.buildContext(descriptor, sourceController.signal);
+      run.conclusion = { ...run.conclusion, attempted: true };
+
+      try {
+        const result = await adapter.search(query, context);
+        const elapsedMs = now() - sourceStart;
+        const rows = result.records.length;
+        const freshness = freshnessFrom(result, descriptor, now());
+        const completeness: SourceConclusion['completeness'] = {
+          isLowerBound: Boolean(descriptor.isLowerBound),
+          warnings: [...(result.warnings ?? [])],
+        };
+        if (result.upstreamReportedTotal !== undefined) completeness.upstreamReportedTotal = result.upstreamReportedTotal;
+        if (result.rowsReturned !== undefined) completeness.rowsReturned = result.rowsReturned;
+        if (result.recordsIncomplete !== undefined) completeness.recordsIncomplete = result.recordsIncomplete;
+        // Adapter-declared incompleteness is machine-readable and must reach the
+        // caller: a partial scan that is reported as complete is a false answer.
+        if (result.incompleteness?.length) {
+          completeness.warnings.push(...result.incompleteness);
+          completeness.recordsIncomplete = true;
+        }
+        if (freshness.stale) completeness.warnings.push(`来源数据已超过 ${descriptor.staleAfterDays} 天未更新。`);
+
+        run.result = result;
+        run.conclusion = {
+          ...run.conclusion,
+          state: rows === 0 ? 'NO_RESULTS' : 'SUCCESS',
+          reasonCode: rows === 0 ? 'EMPTY_RESULT_SET' : 'OK',
+          explanation:
+            rows === 0
+              ? descriptor.zeroResultMeaning
+              : `来源返回 ${rows} 条记录。`,
+          attempted: true,
+          elapsedMs,
+          resultCount: rows,
+          truncated: result.truncated ?? rows >= descriptor.maxResults,
+          freshness,
+          completeness,
+        };
+        if (run.conclusion.truncated) {
+          run.conclusion.completeness.warnings.push('结果可能被截断，未覆盖来源全部命中。');
+        }
+        if (run.result?.records.length) {
+          run.conclusion.requestedLimit = descriptor.maxResults;
+        }
+      } catch (error) {
+        const elapsedMs = now() - sourceStart;
+        run.conclusion = this.conclusionFromError(descriptor, error, elapsedMs, sourceController.signal);
+      } finally {
+        clearTimeout(timer);
+        controller.signal.removeEventListener('abort', onAbort);
+      }
+    };
+
+    const queue = [...scheduled];
+    const worker = async (): Promise<void> => {
+      for (;;) {
+        if (controller.signal.aborted) return;
+        const next = queue.shift();
+        if (!next) return;
+        await runSource(next);
+      }
+    };
+
+    await Promise.race([
+      Promise.all(Array.from({ length: Math.min(concurrency, scheduled.length || 1) }, () => worker())),
+      deadlinePromise,
+    ]).catch(() => undefined);
+
+    controller.abort(new Error('OVERALL_DEADLINE'));
+    clearTimeout(deadlineTimer);
+
+    // A source that was never attempted because time ran out. Note this is NOT
+    // `queue.length > 0`: a worker may have already dequeued the last item and
+    // failed the `remaining <= 0` check inside `runSource`, which leaves the
+    // queue empty while still meaning "this source never ran". Deriving it from
+    // the conclusions is order-independent and therefore race-free.
+    const cancelled = [...runs.values()].some(
+      (run) => run.conclusion.state === 'NOT_QUERIED' && run.conclusion.reasonCode === 'OVERALL_DEADLINE',
+    );
+    for (const descriptor of queue) {
+      const run = runs.get(descriptor.id);
+      if (!run) continue;
+      if (run.conclusion.state === 'NOT_QUERIED' && run.conclusion.reasonCode === 'OVERALL_DEADLINE') {
+        run.conclusion.attempted = false;
+      }
+    }
+
+    const statuses = [...runs.values()]
+      .map((run) => run.conclusion)
+      .sort((a, b) => registryOrder(a.sourceId) - registryOrder(b.sourceId));
+
+    const records: CanonicalTrialRecord[] = [];
+    const normalizationWarnings: string[] = [];
+    for (const run of runs.values()) {
+      const result = run.result;
+      if (!result) continue;
+      const descriptor = run.descriptor;
+      for (const raw of result.records) {
+        try {
+          records.push(
+            normalizeRecord(raw, descriptor, {
+              includeRawFields: false,
+              ...(result.retrievedAt ? { retrievedAt: result.retrievedAt } : {}),
+              ...(result.indexedAt ? { indexedAt: result.indexedAt } : {}),
+              ...(result.scrapedAt ? { scrapedAt: result.scrapedAt } : {}),
+            }),
+          );
+        } catch (error) {
+          normalizationWarnings.push(
+            `${descriptor.id}: ${(error as Error).message}`,
+          );
+        }
+      }
+    }
+
+    const mergeResult: MergeResult = mergeRecords(records);
+
+    const queried: SourceId[] = [];
+    const unavailable: SourceId[] = [];
+    const notQueried: SourceId[] = [];
+    for (const status of statuses) {
+      if (wasQueried(status.state)) queried.push(status.sourceId);
+      else if (status.state === 'NOT_QUERIED') notQueried.push(status.sourceId);
+      else unavailable.push(status.sourceId);
+    }
+
+    for (const status of statuses) {
+      if (status.state === 'NOT_QUERIED') {
+        status.attempted = false;
+      }
+    }
+
+    const completenessWarnings = [
+      ...warnings,
+      ...normalizationWarnings,
+      ...statuses.flatMap((status) =>
+        status.completeness.warnings.map((warning) => `${status.sourceId}: ${warning}`),
+      ),
+    ];
+
+    const elapsedMs = now() - startedMs;
+    return {
+      schemaVersion: '1.0',
+      query,
+      statuses,
+      coverage: { queried, unavailable, notQueried },
+      completeness: {
+        isComplete: notQueried.length === 0 && unavailable.length === 0 && completenessWarnings.length === 0,
+        warnings: completenessWarnings,
+      },
+      totalRecords: mergeResult.records.length,
+      records: mergeResult.records,
+      overlaps: mergeResult.overlaps,
+      startedAt,
+      elapsedMs,
+      cancelled,
+      disclaimer: DISCLAIMER,
+    };
+  }
+
+  private conclusionFromError(
+    descriptor: SourceDescriptor,
+    error: unknown,
+    elapsedMs: number,
+    signal: AbortSignal,
+  ): SourceConclusion {
+    if (error instanceof AdapterError) {
+      const extras: Partial<SourceConclusion> = {
+        attempted: true,
+        elapsedMs,
+        explanation: error.message,
+      };
+      if (error.fixHint) extras.fixHint = error.fixHint;
+      return baseConclusion(descriptor, error.state, error.reasonCode, error.message, extras);
+    }
+
+    const aborted = signal.aborted;
+    const reason = (signal.reason as Error | undefined)?.message;
+    if (aborted && reason === 'SOURCE_TIMEOUT') {
+      return baseConclusion(descriptor, 'TIMEOUT', 'SOURCE_TIMEOUT', `${descriptor.label} 在 ${descriptor.queryTimeoutMs}ms 内未返回。`, {
+        attempted: true,
+        elapsedMs,
+        fixHint: '稍后重试，或在配置中确认该来源的运行时可用性（doctor）。',
+      });
+    }
+    if (aborted) {
+      return baseConclusion(descriptor, 'NOT_QUERIED', 'OVERALL_DEADLINE', '总 deadline 到达，该来源被取消。', {
+        attempted: true,
+        elapsedMs,
+      });
+    }
+
+    return baseConclusion(descriptor, 'FAILED', 'ADAPTER_ERROR', (error as Error)?.message ?? String(error), {
+      attempted: true,
+      elapsedMs,
+      fixHint: '运行 doctor 检查该来源的运行时与数据依赖。',
+    });
+  }
+
+  /** Status for every registry source, independent of a search call. */
+  async status(sourceIds?: readonly string[], includeDiagnostics = false): Promise<SourceConclusion[]> {
+    const enabled = this.options.enabledSources ?? new Set(this.options.adapters.keys());
+    const { sources } = resolveRequestedSources(sourceIds, enabled);
+    const out: SourceConclusion[] = [];
+    for (const descriptor of sources) {
+      const adapter = this.options.adapters.get(descriptor.id);
+      if (!adapter) {
+        out.push(baseConclusion(descriptor, 'NOT_ENABLED', 'ADAPTER_NOT_REGISTERED', '该来源未在运行时注册适配器。'));
+        continue;
+      }
+      const controller = new AbortController();
+      const timer = setTimeout(() => controller.abort(new Error('STATUS_TIMEOUT')), Math.min(descriptor.queryTimeoutMs, 10_000));
+      const started = Date.now();
+      try {
+        const status = await adapter.getStatus(this.buildContext(descriptor, controller.signal));
+        const conclusion = baseConclusion(descriptor, status.state, status.reasonCode, status.explanation, {
+          attempted: status.state !== 'NOT_ENABLED',
+          elapsedMs: Date.now() - started,
+          freshness: status.freshness,
+          coverage: status.coverage,
+        });
+        if (status.fixHint) conclusion.fixHint = status.fixHint;
+        if (includeDiagnostics && status.diagnostics) {
+          // `doctor` prints these verbatim, so a nested object must be
+          // serialized rather than collapsing into "[object Object]".
+          conclusion.completeness.warnings.push(
+            ...Object.entries(status.diagnostics).map(([k, v]) => {
+              const rendered = typeof v === 'object' && v !== null ? JSON.stringify(v) : String(v);
+              return `${k}=${rendered}`;
+            }),
+          );
+        }
+        out.push(conclusion);
+      } catch (error) {
+        out.push(this.conclusionFromError(descriptor, error, Date.now() - started, controller.signal));
+      } finally {
+        clearTimeout(timer);
+      }
+    }
+    return out;
+  }
+
+  adaptersFor(sourceIds?: readonly string[]): SourceDescriptor[] {
+    const enabled = this.options.enabledSources ?? new Set(this.options.adapters.keys());
+    return resolveRequestedSources(sourceIds, enabled).sources;
+  }
+
+  descriptorFor(id: SourceId): SourceDescriptor {
+    return getDescriptor(id);
+  }
+}
