@@ -48,7 +48,10 @@ jobs:
         run: |
           for i in 1 2 3; do
             echo "--- run $i ---"
-            node --test "test/*.test.mjs"
+            # Unquoted on purpose: the shell expands the glob. Node 20's
+            # --test does not expand globs itself, so a quoted pattern is
+            # passed through literally and matches nothing.
+            node --test test/*.test.mjs
           done
 
       - name: Verify the CLI entry actually starts
