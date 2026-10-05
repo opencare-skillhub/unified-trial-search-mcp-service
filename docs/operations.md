@@ -85,11 +85,31 @@ FG-M108（缺少 summary.json 清单，视为未完成的采集快照）。这�
 | `CORPUS_NOT_IN_MANIFEST` | 该语料尚未发布或清单为空；运行打包脚本并上传 Release 后再试 |
 | `TAR_UNAVAILABLE` / `TAR_FAILED` | 目标机缺少可用 `tar`，或归档损坏（后者通常已被 sha256 拦下） |
 
-**获取语料（ADR-008）**：`fetch-corpus` 默认 dry run，只打印将访问的 URL、预期字节数与 sha256；
-`--apply` 才下载。流程为：下载到临时文件 → 校验字节数 → 校验 sha256 → 解压到临时目录 → 校验内容 →
+**获取语料（ADR-008 / ADR-009）**：`fetch-corpus --corpus <id>` 默认 dry run，只打印将访问的 URL、预期字节数、
+sha256 与分发依据；`--apply` 才下载。流程为：下载到临时文件 → 校验字节数 → 校验 sha256 → 解压到临时目录 → 校验内容 →
 **原子替换**目标目录。任何一步失败都会保留原有数据完全不动，并清理临时目录。
 `--url` 支持镜像与 `file://`；`--dest` 指定安装根目录（默认 `~/.unified-trial-mcp/corpora`）。
-这是本服务唯一会代替用户下载数据的地方，且只限**公开发布、可匿名下载**的语料；
+
+**两条分发依据刻意分开**，清单条目的 `basis` 字段声明适用哪一条，缺失则拒绝安装（`MANIFEST_BASIS_MISSING`）：
+
+| `basis` | 适用 | 依据 |
+|---|---|---|
+| `upstream_public` | `chictr_pancreatic` | 上游公开发布、可匿名下载的数据集（ADR-008） |
+| `community_owned` | `xyb_cde_pancreatic` | 社区自采归档，权利人对自己这份抓取成果拥有分发权（ADR-009）。**与上游站点是否需凭证无关**——社区自采不等于上游公开，两者判断依据不同，不得相互套用 |
+
+两类走**完全相同的技术流程**，区别只在准入判断由谁作出。
+
+**安装布局按语料而异**（`configure` 期望的路径形状不同，装错会导致来源报 `NO_ARCHIVE_PACKAGES`）：
+
+| 语料 | tar.gz 内的包目录 | 安装后形状 | 挂载命令 |
+|---|---|---|---|
+| `chictr_pancreatic` | `chictr_pancreatic/` | `<dest>/chictr_pancreatic/chictr_pancreatic.db` | `configure --chictr-corpus <dest>/chictr_pancreatic/chictr_pancreatic.db` |
+| `xyb_cde_pancreatic` | `胰腺癌/` | `<dest>/xyb_cde_pancreatic/胰腺癌/summary.json` | `configure --xyb-archive <dest>/xyb_cde_pancreatic` |
+
+`--xyb-archive` 指向的是**数据包的父目录**（适配器在其下扫描含 `summary.json` 的子目录，即 `output/` 形状），
+而不是包本身；`fetch-corpus` 会保留包目录层级，`--apply` 结束时打印可直接复制的挂载命令。
+
+这是本服务唯一会代替用户下载数据的地方，且只限上表两类已声明依据的语料；
 需要凭证或需突破 robots/WAF/验证码的数据依然绝不代取。
 
 该来源为 `READ_ONLY_ARCHIVE`，`maintain()` 直接抛 `NOT_ENABLED`。
@@ -124,8 +144,8 @@ FG-M108（缺少 summary.json 清单，视为未完成的采集快照）。这�
 
 | 症状 | 处置 |
 |---|---|
-| `ARCHIVE_NOT_CONFIGURED` | `configure --xyb-archive <output 目录>` |
-| `NO_ARCHIVE_PACKAGES` | 目录下无可识别数据包（缺 summary.json 或空包）；补齐采集数据 |
+| `ARCHIVE_NOT_CONFIGURED` | `configure --xyb-archive <output 目录>`，或用 `fetch-corpus --corpus xyb_cde_pancreatic --apply` 下载社区归档后按其打印的命令挂载 |
+| `NO_ARCHIVE_PACKAGES` | 目录下无可识别数据包。**先确认路径层级**：`--xyb-archive` 要指向**数据包的父目录**，装成包本身会报 `json/logs/raw/word 均不完整`。其余情况为缺 summary.json 或空包，需补齐采集数据 |
 | `SUMMARY_UNRECOGNISED` | `summary.json` 结构异常；检查采集脚本版本 |
 
 **数据截止日**：`freshness.dataCutoff` 取"记录级 `scrape_time` 与 `summary.json` 声明中的较新者"，

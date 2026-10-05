@@ -360,6 +360,7 @@ test('corpus: a checksum mismatch is fatal and leaves the installed corpus untou
     extractDir: 'chictr_pancreatic',
     version: '2026-01-01',
     title: 'test corpus',
+    basis: 'upstream_public',
   };
 
   let tarCalled = false;
@@ -419,6 +420,7 @@ test('corpus: a size mismatch is caught before hashing', async () => {
                 extractDir: 'chictr_pancreatic',
                 version: '1',
                 title: 't',
+                basis: 'upstream_public',
               },
             },
           }),
@@ -461,6 +463,7 @@ test('corpus: a dry run touches neither the network nor the disk', async () => {
             extractDir: 'chictr_pancreatic',
             version: '1',
             title: 't',
+            basis: 'upstream_public',
           },
         },
       }),
@@ -581,6 +584,7 @@ test('corpus: a download attempt is bounded by a timeout', async () => {
                 extractDir: 'chictr_pancreatic',
                 version: '1',
                 title: 't',
+                basis: 'upstream_public',
               },
             },
           }),
@@ -619,6 +623,7 @@ test('corpus: the download error surfaced to the user carries the cause', async 
                 extractDir: 'chictr_pancreatic',
                 version: '1',
                 title: 't',
+                basis: 'upstream_public',
               },
             },
           }),
@@ -638,4 +643,115 @@ test('corpus: the download error surfaced to the user carries the cause', async 
     },
   );
   await rm(destDir, { recursive: true, force: true });
+});
+
+test('corpus: an archive corpus installs in the shape its adapter expects', async () => {
+  // The two corpora want opposite layouts and getting it wrong is silent:
+  //   chictr  - --chictr-corpus names a FILE  -> payload directly under extractDir
+  //   xyb_cde - --xyb-archive names the PARENT of packages (the adapter scans it
+  //             for subdirectories with summary.json). Installing the package AT
+  //             extractDir made the adapter look one level too deep and report
+  //             NO_ARCHIVE_PACKAGES ("json、logs、raw、word 均不完整").
+  // Real-data verification caught this; this test keeps it caught.
+  const { fetchCorpus } = await load('cli/corpus.js');
+  const { mkdtemp, mkdir, writeFile, readdir, rm } = await import('node:fs/promises');
+  const os = await import('node:os');
+  const path = await import('node:path');
+
+  const destDir = await mkdtemp(path.join(os.tmpdir(), 'utcd-layout-'));
+  const entry = {
+    url: 'https://example.invalid/x.tar.gz',
+    bytes: 3,
+    sha256: 'd'.repeat(64),
+    extractDir: 'xyb_cde_pancreatic',
+    version: '1',
+    title: 't',
+    basis: 'community_owned',
+  };
+
+  // A fake "tar" that lays down the nested package directory, exactly like the
+  // real archive (top level = 胰腺癌/).
+  const runTar = async (args) => {
+    const extractRoot = args[args.indexOf('-C') + 1];
+    const pkg = path.join(extractRoot, '胰腺癌');
+    await mkdir(path.join(pkg, 'json'), { recursive: true });
+    await writeFile(path.join(pkg, 'summary.json'), '{}');
+    await writeFile(path.join(pkg, 'json', 'CTR1.json'), '{}');
+  };
+
+  const result = await fetchCorpus(
+    { corpusId: 'xyb_cde_pancreatic', destDir, apply: true },
+    {
+      readManifest: async () => ({ corpora: { xyb_cde_pancreatic: entry } }),
+      fetchImpl: async () => new Response(new Uint8Array([1, 2, 3]), { status: 200 }),
+      sha256File: async () => 'd'.repeat(64),
+      runTar,
+    },
+  );
+
+  // The package must remain a SUBDIRECTORY of corpusDir, or --xyb-archive fails.
+  const top = await readdir(result.corpusDir);
+  assert.ok(
+    top.includes('胰腺癌'),
+    `the package must stay nested for --xyb-archive (got ${JSON.stringify(top)})`,
+  );
+  assert.ok(
+    !top.includes('summary.json'),
+    'the package contents must not sit directly in corpusDir',
+  );
+  await rm(destDir, { recursive: true, force: true });
+});
+
+test('corpus: an asset without a distribution basis is refused', async () => {
+  // ADR-009 exists so nobody can add a redistributable-looking asset without
+  // stating WHY it may be redistributed. A field nobody validates is a field
+  // nobody fills in, so the install path refuses it.
+  const { fetchCorpus } = await load('cli/corpus.js');
+  await assert.rejects(
+    () =>
+      fetchCorpus(
+        { corpusId: 'mystery', apply: false },
+        {
+          readManifest: async () => ({
+            corpora: {
+              mystery: {
+                url: 'https://example.invalid/x.tar.gz',
+                bytes: 1,
+                sha256: 'e'.repeat(64),
+                extractDir: 'mystery',
+                version: '1',
+                title: 'no basis declared',
+              },
+            },
+          }),
+        },
+      ),
+    (error) => {
+      assert.equal(error.reasonCode, 'MANIFEST_BASIS_MISSING');
+      assert.match(error.fixHint, /upstream_public/);
+      assert.match(error.fixHint, /community_owned/);
+      return true;
+    },
+  );
+});
+
+test('corpus: every shipped corpus declares a basis and a real digest', async () => {
+  const { readFile } = await import('node:fs/promises');
+  const path = await import('node:path');
+  const { ROOT } = await import('./helpers.mjs');
+  const manifest = JSON.parse(await readFile(path.join(ROOT, 'corpora', 'manifest.json'), 'utf8'));
+
+  for (const [id, entry] of Object.entries(manifest.corpora)) {
+    assert.ok(
+      entry.basis === 'upstream_public' || entry.basis === 'community_owned',
+      `${id} must declare basis (ADR-009)`,
+    );
+    assert.ok(/^[0-9a-f]{64}$/.test(entry.sha256), `${id} needs a real sha256`);
+    assert.ok(entry.bytes > 0, `${id} needs a real byte count`);
+    assert.ok(entry.url.endsWith(`${id}.tar.gz`), `${id}'s asset name must match its id`);
+  }
+  // The two corpora rest on DIFFERENT grounds; if this ever collapses to one
+  // value, ADR-009's distinction has been quietly lost.
+  const bases = new Set(Object.values(manifest.corpora).map((e) => e.basis));
+  assert.ok(bases.size >= 2, `expected both bases to be represented, saw ${[...bases]}`);
 });

@@ -68,19 +68,26 @@
 | `chinadrugtrials` | ChinaDrugTrials | 受控抓取 | **含研究者（PI）信息** |
 | `xyb_chinadrugtrials_archive` | 小胰宝归档 | 离线数据包 | 139 条胰腺癌记录，结构化章节，**数据截止 2026-09-28** |
 
-### 获取 ChiCTR 离线语料
+### 获取离线语料
 
-468 条胰腺癌语料以 **Release 资产**发布（解压后 226 MB，压缩后 25 MB），冷启动不必再四处找文件：
+两个离线语料都以 **Release 资产**发布，冷启动不必再四处找文件：
+
+| 语料 | 挂载参数 | 压缩后体积 | 分发依据 |
+|---|---|---|---|
+| `chictr_pancreatic` | `configure --chictr-corpus` | 25 MB | **upstream_public** —— ChiCTR 公开且可匿名下载的数据集 |
+| `xyb_cde_pancreatic` | `configure --xyb-archive` | 11 MB | **community_owned** —— 小胰宝社区自采成果，权利人确认可分发 |
+
+这两条依据**刻意分开**（规范 ADR-009）。只有第一条建立在"数据本身公开"之上；第二条依据的是**社区对自己抓取成果的权利**，
+上游 CDE 站点需要 Cookie 会话这一点与**该依据无关**，绝不能拿来论证它。把两者混为一谈，等于悄悄废掉"本服务绝不代取需凭证数据"这条底线。
+
+两者安装后的目录形状不同，各自匹配自己的适配器：
 
 ```bash
-# 预览将访问的 URL、预期大小与 sha256 —— 不下载任何内容
-unified-trial-mcp fetch-corpus
-
-# 下载、校验、解压并原子替换
-unified-trial-mcp fetch-corpus --apply
-
-# 再挂载为只读来源
+unified-trial-mcp fetch-corpus --corpus chictr_pancreatic --apply
 unified-trial-mcp configure --chictr-corpus ~/.unified-trial-mcp/corpora/chictr_pancreatic/chictr_pancreatic.db
+
+unified-trial-mcp fetch-corpus --corpus xyb_cde_pancreatic --apply
+unified-trial-mcp configure --xyb-archive ~/.unified-trial-mcp/corpora/xyb_cde_pancreatic
 ```
 
 这条命令遵守四条规则：
@@ -88,11 +95,12 @@ unified-trial-mcp configure --chictr-corpus ~/.unified-trial-mcp/corpora/chictr_
 - **sha256 就是契约。** 字节数与摘要全部来自 `corpora/manifest.json`，任何一项不符即整体失败；
 - **下载失败绝不损坏你已有的数据。** 先下到临时文件、校验、解压到临时目录，确认无误才替换。已实测：
   篡改 1 个字节后安装中止并报校验错误，原有语料逐字节不变；
-- **不公开的东西绝不代取。** 这条命令只覆盖可匿名下载的语料。需要凭证或需突破防护的数据
-  （ChinaDrugTrials 会话、受控归档）依然绝不代替用户获取（见规范 ADR-006 / ADR-008）；
+- **绝不代取需凭证的数据。** 不会把用户本没有的访问权交给他：会话、受控归档、需过验证码的内容一律保持手工
+  （ADR-006）。每个语料都要声明自己的依据（`upstream_public` 或 `community_owned`），未声明依据的资产安装时直接拒绝（ADR-009）；
 - **镜像用 `--url`。** 支持 `https://…` 与 `file:///…`，适配内网与离线机房。
 
-语料数据版权归 ChiCTR 所有，本项目只搬运公开快照并做只读索引。
+数据版权归各自来源方所有。ChiCTR 语料是公开快照的只读搬运；小胰宝 CDE 归档是社区自采成果，
+且登记信息可能被上游随时修订，请把它当作有截止日的快照而非事实源的最终版本。
 
 ### 离线快照会声明自己的数据截止日
 

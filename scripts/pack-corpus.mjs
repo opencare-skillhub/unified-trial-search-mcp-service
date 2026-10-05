@@ -46,14 +46,55 @@ const MANIFEST_PATH = path.join(ROOT, 'corpora', 'manifest.json');
  * the archive. Listing them explicitly (rather than archiving the directory)
  * keeps stray files - .DS_Store, -wal/-shm SQLite sidecars, editor backups - out
  * of a published asset.
+ *
+ * `basis` records WHY this asset may be redistributed at all, because the two
+ * corpora rest on different grounds and conflating them would quietly dissolve
+ * ADR-006 (see ADR-009):
+ *   - upstream_public - the dataset itself is public and anonymously
+ *     downloadable, so shipping a copy is transport, not disclosure.
+ *   - community_owned - the archive is the community's own scraping output,
+ *     redistributed because its author holds the rights to that output. That
+ *     the upstream site needs a credentialed session is irrelevant to this
+ *     basis and must not be used to argue it.
+ *
+ * `source` is the directory the data is packed FROM. It is only needed when
+ * packing (it points at a local scrape tree, and can be overridden with
+ * --source); it is deliberately NOT stored in the manifest, since it would
+ * leak the packer's machine layout and is meaningless to an installer.
  */
 const CORPORA = {
   chictr_pancreatic: {
     title: 'ChiCTR 胰腺癌离线语料',
     entries: ['chictr_pancreatic.db', 'pancreatic_trials.json', 'html'],
     extractDir: 'chictr_pancreatic',
+    basis: 'upstream_public',
     note: 'ChiCTR 公开登记信息离线快照；数据版权归 ChiCTR，本服务仅作搬运与只读索引。',
   },
+  xyb_cde_pancreatic: {
+    title: '小胰宝 CDE 胰腺癌社区归档',
+    // The whole package: structured JSON, the raw CDE page snapshots, and the
+    // site's DOC/DOCX exports. `word/` is ~90 MB of the ~109 MB source and is
+    // never inlined by the service (it is reported as a path only), but the
+    // rights holder chose to distribute everything, so it ships.
+    //
+    // The PACKAGE DIRECTORY is the entry (`胰腺癌`), so the archive keeps an
+    // `output/`-like shape: the extracted tree has the package as a subdirectory,
+    // which is exactly what `--xyb-archive` expects (it scans for subdirectories
+    // containing summary.json). Packing the package CONTENTS instead would
+    // install a directory the adapter rejects with NO_ARCHIVE_PACKAGES.
+    entries: ['胰腺癌'],
+    extractDir: 'xyb_cde_pancreatic',
+    basis: 'community_owned',
+    note: '小胰宝社区自行抓取并整理的 CDE 胰腺癌数据包（结构化 JSON + 原始 HTML 快照 + 网页导出 DOC/DOCX）；' +
+      '分发依据是社区对该抓取成果自身拥有分发权（ADR-009）。上游站点为受控来源，' +
+      '本包不是上游官方数据集，登记信息可能被随时修订。',
+  },
+};
+
+/** Where each corpus's data lives by default on the machine that packs it. */
+const DEFAULT_SOURCES = {
+  chictr_pancreatic: '/Users/qinxiaoqiang/Downloads/chictr_trials/data',
+  xyb_cde_pancreatic: '/Users/qinxiaoqiang/Downloads/xyb-chinadrugtrials-data/output',
 };
 
 function parseArgs(argv) {
@@ -107,6 +148,22 @@ function pad512(size) {
 }
 
 /**
+ * Files that are never part of the data, only of the machine it was collected
+ * on. Declaring `entries` keeps TOP-LEVEL junk out, but these appear deep inside
+ * directories we do archive (the XYB package carries two .DS_Store files, one of
+ * them inside `word/`), and a published asset should not contain the packer's OS
+ * bookkeeping.
+ *
+ * Excluding them changes the sha256, so this list is part of the asset identity:
+ * a manifest written by an older packer will no longer match a newer archive.
+ */
+const IGNORED_NAMES = new Set(['.DS_Store', 'Thumbs.db', 'desktop.ini']);
+
+function isIgnored(name) {
+  return IGNORED_NAMES.has(name) || name.endsWith('.swp') || name.endsWith('~');
+}
+
+/**
  * Walk the declared entries in a stable order (sorted, depth-first).
  *
  * Sorting matters: readdir order is filesystem-dependent, and an unstable order
@@ -123,6 +180,7 @@ async function collect(sourceDir, entries) {
         const children = await readdir(dir, { withFileTypes: true });
         children.sort((a, b) => (a.name < b.name ? -1 : a.name > b.name ? 1 : 0));
         for (const child of children) {
+          if (isIgnored(child.name)) continue;
           const childPath = path.join(dir, child.name);
           if (child.isDirectory()) await walk(childPath);
           else if (child.isFile()) files.push(childPath);
@@ -177,20 +235,24 @@ async function sha256(file) {
 async function main() {
   const flags = parseArgs(process.argv.slice(2));
   const corpusId = typeof flags.get('corpus') === 'string' ? flags.get('corpus') : undefined;
-  const source = typeof flags.get('source') === 'string' ? flags.get('source') : undefined;
+  const explicitSource = typeof flags.get('source') === 'string' ? flags.get('source') : undefined;
 
   if (!corpusId || !CORPORA[corpusId]) {
     process.stderr.write(
-      `usage: node scripts/pack-corpus.mjs --corpus <${Object.keys(CORPORA).join('|')}> --source <data-dir> [--out <dir>] [--write-manifest]\n`,
+      `usage: node scripts/pack-corpus.mjs --corpus <${Object.keys(CORPORA).join('|')}> [--source <data-dir>] [--out <dir>] [--write-manifest]\n`,
     );
-    return 2;
-  }
-  if (!source) {
-    process.stderr.write('--source <data-dir> is required\n');
     return 2;
   }
 
   const spec = CORPORA[corpusId];
+  // --source stays supported so a packer on another machine (or a rebuild from a
+  // restored backup) does not have to edit this file; the default is just the
+  // path where the data normally lives for the person who publishes it.
+  const source = explicitSource ?? DEFAULT_SOURCES[corpusId];
+  if (!source) {
+    process.stderr.write(`--source <data-dir> is required for ${corpusId}\n`);
+    return 2;
+  }
   const sourceDir = path.resolve(source);
   const outDir = path.resolve(
     typeof flags.get('out') === 'string' ? flags.get('out') : path.join(ROOT, 'dist-release'),
@@ -226,11 +288,15 @@ async function main() {
     extractDir: spec.extractDir,
     version,
     title: spec.title,
+    // basis travels into the manifest on purpose: fetch-corpus refuses an entry
+    // without it, so nobody can add a redistributable-looking asset without
+    // stating the grounds for redistributing it (ADR-009).
+    basis: spec.basis,
     note: spec.note,
   };
 
   process.stdout.write(
-    `\n${assetName}\n  files  : ${files.length}\n  bytes  : ${info.size}\n  sha256 : ${digest}\n`,
+    `\n${assetName}\n  files  : ${files.length}\n  bytes  : ${info.size}\n  sha256 : ${digest}\n  basis  : ${spec.basis}\n`,
   );
 
   if (flags.get('write-manifest')) {

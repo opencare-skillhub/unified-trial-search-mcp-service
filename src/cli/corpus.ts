@@ -20,7 +20,7 @@
  */
 import { createHash } from 'node:crypto';
 import { createWriteStream } from 'node:fs';
-import { mkdir, mkdtemp, readFile, rename, rm, stat } from 'node:fs/promises';
+import { mkdir, mkdtemp, readFile, readdir, rename, rm, stat } from 'node:fs/promises';
 import { Readable } from 'node:stream';
 import { pipeline } from 'node:stream/promises';
 import { spawn } from 'node:child_process';
@@ -39,6 +39,19 @@ export const MANIFEST_PATH = path.join(ROOT, 'corpora', 'manifest.json');
 export const DEFAULT_CORPUS_ID = 'chictr_pancreatic';
 export const DEFAULT_RETRIES = 3;
 
+/**
+ * Why an asset may be redistributed at all (ADR-009). The two corpora rest on
+ * different grounds, and collapsing them into "it's public data" would quietly
+ * dissolve ADR-006, so the grounds travel with the entry instead of living only
+ * in a document:
+ *   - `upstream_public`  - the dataset itself is public and anonymously
+ *     downloadable; shipping a copy is transport, not disclosure.
+ *   - `community_owned`  - the community's own scraping output, redistributed
+ *     because its author holds the rights to that output. Whether the upstream
+ *     site needs a credentialed session is irrelevant to THIS basis.
+ */
+export type CorpusBasis = 'upstream_public' | 'community_owned';
+
 export interface CorpusManifestEntry {
   url: string;
   bytes: number;
@@ -46,7 +59,59 @@ export interface CorpusManifestEntry {
   extractDir: string;
   version: string;
   title: string;
+  basis?: CorpusBasis;
   note?: string;
+}
+
+/**
+ * The file that must exist inside an extracted corpus for it to count as
+ * installed. Checking this is what stops a truncated or wrongly-packed archive
+ * from being swapped in as a "successful" install.
+ */
+const REQUIRED_CONTENT: Record<string, string> = {
+  chictr_pancreatic: 'chictr_pancreatic.db',
+  xyb_cde_pancreatic: 'summary.json',
+};
+
+export function requiredContentFor(corpusId: string): string {
+  return REQUIRED_CONTENT[corpusId] ?? 'summary.json';
+}
+
+/**
+ * Confirm the expected content exists ANYWHERE under the extracted root, and
+ * return the directory it was found in (i.e. the real package root).
+ *
+ * Looking only at the top level was wrong: the XYB archive keeps its package
+ * under `胰腺癌/`, so a top-level check rejected a perfectly good install with a
+ * confusing ENOENT. Archives may legitimately nest, so the check follows them -
+ * but it still has to find the content, which is the part that catches a
+ * mis-packed or truncated archive.
+ */
+async function findContentRoot(extractRoot: string, required: string): Promise<string> {
+  const direct = path.join(extractRoot, required);
+  if (await exists(direct)) return extractRoot;
+
+  const children = await readdir(extractRoot, { withFileTypes: true });
+  for (const child of children) {
+    if (!child.isDirectory()) continue;
+    const candidate = path.join(extractRoot, child.name, required);
+    if (await exists(candidate)) return path.join(extractRoot, child.name);
+  }
+
+  throw new CorpusError(
+    'EXTRACTED_CONTENT_MISSING',
+    `解压后未找到必需内容 ${required}（已检查归档顶层及其下一层目录）`,
+    '归档可能打包了错误的目录，或下载不完整。已保留原有数据未做任何改动。',
+  );
+}
+
+async function exists(target: string): Promise<boolean> {
+  try {
+    await stat(target);
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 /** Injected for tests: never let a unit test open a socket or spawn tar. */
@@ -123,6 +188,17 @@ export function resolveEntry(
       'MANIFEST_ENTRY_INCOMPLETE',
       `清单条目缺少 url/bytes/sha256：${corpusId}`,
       '用 scripts/pack-corpus.mjs --write-manifest 重新生成，不要手工编辑 sha256。',
+    );
+  }
+  // ADR-009: an asset may not be redistributed without stating the grounds.
+  // Enforcing it here rather than in a document is deliberate - the manifest is
+  // where new assets get added, and a field nobody validates is a field nobody
+  // fills in.
+  if (entry.basis !== 'upstream_public' && entry.basis !== 'community_owned') {
+    throw new CorpusError(
+      'MANIFEST_BASIS_MISSING',
+      `清单条目未声明分发依据（basis）：${corpusId}`,
+      '每个语料必须声明 basis：upstream_public（上游公开可匿名下载）或 community_owned（社区自采成果，权利人确认可分发）。见 SPEC ADR-009。',
     );
   }
   return entry;
@@ -323,8 +399,35 @@ export async function fetchCorpus(
 
     // Verify the extracted corpus before it can replace anything: an archive can
     // pass its checksum and still be the wrong shape for this code.
-    await stat(path.join(extractRoot, 'chictr_pancreatic.db'));
-    steps.push('解压内容校验通过');
+    const required = requiredContentFor(corpusId);
+    const contentRoot = await findContentRoot(extractRoot, required);
+    steps.push(`解压内容校验通过（${required} 存在）`);
+
+    // The install layout must match what `configure` expects for THIS corpus,
+    // and the two corpora want opposite things:
+    //
+    //   chictr   - --chictr-corpus names a FILE, so the payload goes directly
+    //              under extractDir: <extractDir>/chictr_pancreatic.db, matching
+    //              how a user would point at a checked-out corpus.
+    //   xyb_cde  - --xyb-archive names the PARENT of packages: the adapter scans
+    //              that directory for SUBDIRECTORIES holding summary.json. If the
+    //              package lands at <extractDir> itself, the adapter looks one
+    //              level too deep and rejects it with NO_ARCHIVE_PACKAGES
+    //              ("json、logs、raw、word 均不完整"). So the package must stay
+    //              nested: <extractDir>/<package>/summary.json.
+    //
+    // This is why the swap source differs: for an archive-shaped corpus we move
+    // the whole extraction root (which holds the package directory), not the
+    // package itself.
+    const installSource = corpusId === 'xyb_cde_pancreatic' ? extractRoot : contentRoot;
+
+    if (corpusId === 'xyb_cde_pancreatic' && contentRoot === extractRoot) {
+      throw new CorpusError(
+        'ARCHIVE_LAYOUT_UNEXPECTED',
+        `归档 ${corpusId} 顶层直接是数据包内容，缺少包目录层级（期望形如 <归档>/<包名>/summary.json）`,
+        '--xyb-archive 需要指向数据包的父目录（output 目录）。请用 pack-corpus.mjs 重新打包并更新清单。',
+      );
+    }
 
     // Atomic-ish swap: build <destDir>/<extractDir>.new, then rename it over the
     // old directory. A rename within one filesystem is atomic, so a reader either
@@ -334,11 +437,12 @@ export async function fetchCorpus(
     const previous = `${corpusDir}.old`;
     await rm(next, { recursive: true, force: true });
     await rm(previous, { recursive: true, force: true });
-    await rename(extractRoot, next).catch(async (error: NodeJS.ErrnoException) => {
+
+    await rename(installSource, next).catch(async (error: NodeJS.ErrnoException) => {
       // rename() across devices fails with EXDEV; fall back to a copy.
       if (error.code !== 'EXDEV') throw error;
       const { cp } = await import('node:fs/promises');
-      await cp(extractRoot, next, { recursive: true });
+      await cp(installSource, next, { recursive: true });
     });
 
     let replaced = false;
@@ -358,11 +462,46 @@ export async function fetchCorpus(
     await rm(previous, { recursive: true, force: true });
     steps.push(`已替换目标目录：${corpusDir}`);
 
-    const { DatabaseSync } = await import('node:sqlite');
-    const db = new DatabaseSync(dbPath, { readOnly: true });
-    const row = db.prepare('SELECT COUNT(*) AS c FROM trials').get() as { c: number };
-    db.close();
-    steps.push(`数据库可读：trials 共 ${row.c} 条记录`);
+    // A corpus is only "installed" if this service can actually read it. For the
+    // SQLite corpus that means opening it; for an archive package it means the
+    // files the adapter walks are present. Verifying here keeps a corrupt install
+    // from being reported as success and only discovered at query time.
+    if (required.endsWith('.db')) {
+      const { DatabaseSync } = await import('node:sqlite');
+      const db = new DatabaseSync(path.join(corpusDir, required), { readOnly: true });
+      const row = db.prepare('SELECT COUNT(*) AS c FROM trials').get() as { c: number };
+      db.close();
+      steps.push(`数据库可读：trials 共 ${row.c} 条记录`);
+    } else {
+      // The archive's package root was renamed into place, so corpusDir IS the
+      // package - not a directory of packages. An archive holding several
+      // packages would land them as siblings, so accept both shapes, but require
+      // at least one usable package either way: "installed successfully" has to
+      // mean "the adapter can read something".
+      const candidates: string[] = [];
+      if (await exists(path.join(corpusDir, 'summary.json'))) candidates.push(corpusDir);
+      for (const child of await readdir(corpusDir, { withFileTypes: true })) {
+        if (!child.isDirectory()) continue;
+        const nested = path.join(corpusDir, child.name);
+        if (await exists(path.join(nested, 'summary.json'))) candidates.push(nested);
+      }
+
+      // A package without json/ is skipped by the adapter, so it must not count
+      // towards "this install works".
+      const usable = candidates.filter((candidate) => candidate !== undefined);
+      const readable: string[] = [];
+      for (const candidate of usable) {
+        if (await exists(path.join(candidate, 'json'))) readable.push(path.basename(candidate));
+      }
+      if (readable.length === 0) {
+        throw new CorpusError(
+          'INSTALLED_ARCHIVE_UNUSABLE',
+          `解压后没有可用数据包（每个包都需要 summary.json 与 json/ 目录）：${corpusDir}`,
+          '归档可能打包了错误的目录。请报告该问题并暂时用 --url 指向可信来源。',
+        );
+      }
+      steps.push(`归档可读：${readable.length} 个可用数据包（${readable.join('、')}）`);
+    }
 
     return { ...base, steps };
   } finally {

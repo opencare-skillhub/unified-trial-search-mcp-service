@@ -1,11 +1,19 @@
 {
   "$comment": [
-    "Offline corpus release assets, verified by `fetch-corpus` (ADR-008).",
+    "Offline corpus release assets, verified by `fetch-corpus` (ADR-008/ADR-009).",
     "`bytes` and `sha256` here are the contract: a download that does not match",
     "them is rejected and any existing data is left untouched.",
     "",
+    "`basis` is REQUIRED and records why the asset may be redistributed at all:",
+    "  upstream_public - the dataset is public and anonymously downloadable (ADR-008)",
+    "  community_owned - the community's own scraping output, distributed because its",
+    "                    author holds the rights to that output (ADR-009). Whether the",
+    "                    upstream site needs a credentialed session is irrelevant here.",
+    "Adding an asset without `basis` is refused at install time; the two grounds must",
+    "not be conflated, or ADR-006's boundary quietly disappears.",
+    "",
     "Regenerate with:",
-    "  node scripts/pack-corpus.mjs --corpus chictr_pancreatic --source <data-dir> --write-manifest",
+    "  node scripts/pack-corpus.mjs --corpus <id> --write-manifest",
     "then upload the tar.gz to the GitHub Release named in `url` and commit this file.",
     "Never edit sha256 by hand."
   ],
@@ -17,7 +25,18 @@
       "extractDir": "chictr_pancreatic",
       "version": "2026-10-05",
       "title": "ChiCTR 胰腺癌离线语料",
-      "note": "ChiCTR 公开登记信息离线快照；数据版权归 ChiCTR，本服务仅作搬运与只读索引。"
+      "note": "ChiCTR 公开登记信息离线快照；数据版权归 ChiCTR，本服务仅作搬运与只读索引。",
+      "basis": "upstream_public"
+    },
+    "xyb_cde_pancreatic": {
+      "url": "https://github.com/opencare-skillhub/unified-trial-search-mcp-service/releases/download/xyb_cde_pancreatic-2026-10-05/xyb_cde_pancreatic.tar.gz",
+      "bytes": 11032155,
+      "sha256": "d1ccdac0ef5462a62bf43a5ec5b341ef7f0cd08a297d138d9c2617c757b482fb",
+      "extractDir": "xyb_cde_pancreatic",
+      "version": "2026-10-05",
+      "title": "小胰宝 CDE 胰腺癌社区归档",
+      "basis": "community_owned",
+      "note": "小胰宝社区自行抓取并整理的 CDE 胰腺癌数据包（结构化 JSON + 原始 HTML 快照 + 网页导出 DOC/DOCX）；分发依据是社区对该抓取成果自身拥有分发权（ADR-009）。上游站点为受控来源，本包不是上游官方数据集，登记信息可能被随时修订。"
     }
   }
 }

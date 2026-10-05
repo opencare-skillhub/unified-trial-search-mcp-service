@@ -67,20 +67,28 @@ That single rule turns out to drive almost every design decision below.
 Together these cover the global registries, the Chinese registries, and the CDE drug-trial platform —
 including the **NMPA/ChinaDrugTrials investigator information** that no other MCP surfaces.
 
-### Getting the ChiCTR corpus
+### Getting the offline corpora
 
-The 468-record ChiCTR pancreatic corpus ships as a **release asset** (226 MB unpacked, 25 MB compressed),
-so a cold start does not require hunting for files:
+Two offline corpora ship as **release assets**, so a cold start does not require hunting for files:
+
+| Corpus | Flag to mount | Size (packed) | Basis for redistribution |
+|---|---|---|---|
+| `chictr_pancreatic` | `configure --chictr-corpus` | 25 MB | **upstream_public** — ChiCTR publishes this data publicly and anonymously |
+| `xyb_cde_pancreatic` | `configure --xyb-archive` | 11 MB | **community_owned** — the Xiaoyibao community's own scraping output; distributed because its author holds the rights to that output |
+
+Those two bases are deliberately kept distinct (ADR-009 in the spec). Only the first rests on "the data is
+public". The second is the community's own work product: the fact that the upstream CDE site needs a
+credentialed session is *irrelevant* to that basis and must never be used to justify it. Conflating the two
+would quietly dissolve the rule that this service never fetches credentialed data for you.
+
+Each corpus is installed to match what its own adapter expects, which is not the same shape:
 
 ```bash
-# preview the URL, the expected size and the expected sha256 - downloads nothing
-unified-trial-mcp fetch-corpus
-
-# download, verify, extract and install atomically
-unified-trial-mcp fetch-corpus --apply
-
-# then mount it as a read-only source
+unified-trial-mcp fetch-corpus --corpus chictr_pancreatic --apply
 unified-trial-mcp configure --chictr-corpus ~/.unified-trial-mcp/corpora/chictr_pancreatic/chictr_pancreatic.db
+
+unified-trial-mcp fetch-corpus --corpus xyb_cde_pancreatic --apply
+unified-trial-mcp configure --xyb-archive ~/.unified-trial-mcp/corpora/xyb_cde_pancreatic
 ```
 
 Four rules this command follows:
@@ -90,12 +98,14 @@ Four rules this command follows:
 - **A failed download never damages what you have.** The archive is fetched to a temp file, verified,
   extracted to a temp directory, and only then swapped in. Verified by tampering with a single byte: the
   install aborts with a checksum error and the previous corpus is byte-identical afterwards;
-- **Nothing is fetched that is not public.** This covers anonymously downloadable corpus data. Data behind a
-  credential or a challenge — the ChinaDrugTrials session, controlled archives — is still never fetched for
-  you (see ADR-006/ADR-008 in the spec);
+- **Nothing credentialed is ever fetched.** You are never handed access you do not have: sessions, controlled
+  archives and anything behind a challenge stay manual (ADR-006). Each shipped corpus declares its own basis
+  (`upstream_public` or `community_owned`) and an asset without one is refused at install time (ADR-009);
 - **Use `--url` for a mirror.** `--url https://…` or `--url file:///…` handles intranets and air-gapped hosts.
 
-The corpus data remains ChiCTR's. This project only transports a public snapshot and indexes it read-only.
+The data remains its originators'. ChiCTR's corpus is a public snapshot transported read-only; the Xiaoyibao
+CDE archive is the community's own work, and registering trials may be revised upstream at any time, so treat
+the packaged copy as a dated snapshot rather than a source of truth.
 
 ### Offline snapshots declare their own data cutoff
 

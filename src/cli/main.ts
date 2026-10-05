@@ -327,9 +327,14 @@ async function commandFetchCorpus(flags: Map<string, string | boolean>): Promise
       );
       return 0;
     }
+    // Each corpus is mounted by a different configure flag; printing the ChiCTR
+    // flag for the XYB archive would send users down a path that fails.
+    const mount =
+      result.corpusId === 'xyb_cde_pancreatic'
+        ? `unified-trial-mcp configure --xyb-archive ${result.corpusDir}`
+        : `unified-trial-mcp configure --chictr-corpus ${result.dbPath}`;
     process.stdout.write(
-      `\n语料已就绪：${result.dbPath}\n` +
-        `下一步把它挂载为只读来源：\n  unified-trial-mcp configure --chictr-corpus ${result.dbPath}\n`,
+      `\n语料已就绪：${result.corpusDir}\n` + `下一步把它挂载为只读来源：\n  ${mount}\n`,
     );
     return 0;
   } catch (error) {
