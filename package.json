@@ -56,9 +56,11 @@
   "files": [
     "dist/src/**/*.js",
     "!dist/src/**/*.map",
+    "corpora/manifest.json",
     "README.md",
     "README.zh-CN.md",
     "LICENSE",
-    "docs/operations.md"
+    "docs/operations.md",
+    "docs/corpus-lifecycle.md"
   ]
 }

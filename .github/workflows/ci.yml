@@ -85,3 +85,10 @@ jobs:
           npm install "$GITHUB_WORKSPACE" >/dev/null
           ./node_modules/.bin/unified-trial-mcp help | grep -q "unified-trial-mcp"
           echo "installed package runs through its bin symlink"
+          # `help` alone never touches the filesystem, so it passes even when
+          # `files` omits something the CLI reads at runtime. Resolve a real
+          # corpus entry to prove the manifest survived packaging; it is a dry
+          # run, so nothing is downloaded.
+          ./node_modules/.bin/unified-trial-mcp fetch-corpus --corpus ctv_index \
+            | grep -q "^语料：ctv_index"
+          echo "installed package can read the corpus manifest"

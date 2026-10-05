@@ -527,6 +527,36 @@ test('corpus: the manifest and the packer agree on what a corpus is', async () =
   }
 });
 
+test('npm: the published package carries the corpus manifest it reads at runtime', async () => {
+  // `fetch-corpus` resolves the manifest from the package root (three levels up
+  // from dist/src/cli), so a manifest left out of `files` is invisible when
+  // running from the repo and fatal once installed. Nothing in the repo tree
+  // can reveal that, so this asks npm what it would actually publish.
+  const { execFile } = await import('node:child_process');
+  const { promisify } = await import('node:util');
+  const path = await import('node:path');
+  const { ROOT } = await import('./helpers.mjs');
+  const run = promisify(execFile);
+
+  const { stdout } = await run('npm', ['pack', '--dry-run', '--json'], { cwd: ROOT, timeout: 120_000 });
+  // `prepack` runs the build, whose progress lines land on stdout ahead of the
+  // JSON payload, so the document has to be located rather than assumed.
+  const [packed] = JSON.parse(stdout.slice(stdout.indexOf('[')));
+  const paths = packed.files.map((f) => f.path);
+
+  for (const required of ['corpora/manifest.json', 'dist/src/cli/main.js', 'README.md', 'LICENSE']) {
+    assert.ok(
+      paths.includes(required),
+      `the published tarball must contain ${required}; it would break every install`,
+    );
+  }
+
+  // Credentials and corpus payloads must never ship, however they got there.
+  for (const file of paths) {
+    assert.doesNotMatch(file, /cookie\.env$|\.env$|(^|\/)[^/]+\.db$|(^|\/)[^/]+\.tar\.gz$/);
+  }
+});
+
 test('corpus: the packer refuses a mistyped version instead of publishing a dead URL', async () => {
   // Both the release tag and the asset URL are derived from the version, so a
   // mistyped one produces a URL that 404s for every user forever, and a duplicate
