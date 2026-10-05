@@ -10,3 +10,10 @@ cookie.env
 # Ephemeral probes / scratch output.
 tmp/
 .DS_Store
+
+# Corpus tarballs built by scripts/pack-corpus.mjs. They are 10-25 MB each and
+# belong on a GitHub Release, not in git history.
+dist-release/
+
+# Tool-local scratch state.
+.workbuddy-ai/

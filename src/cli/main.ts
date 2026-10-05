@@ -21,7 +21,7 @@ import path from 'node:path';
 import { promises as fs, realpathSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 
-import { CONFIG_FILE_NAME, defaultConfigDir, loadConfig, type PathConfig } from '../core/config.js';
+import { CONFIG_FILE_NAME, defaultConfigDir, loadConfig, mergeAndWriteConfig, type PathConfig } from '../core/config.js';
 import {
   CorpusError,
   DEFAULT_CORPUS_ID,
@@ -440,34 +440,18 @@ async function commandConfigure(flags: Map<string, string | boolean>): Promise<n
     }
   }
 
-  // Merge with any existing file so configure never drops prior settings.
-  let existing: Record<string, unknown> = {};
-  try {
-    const text = await fs.readFile(configPath, 'utf8');
-    const parsed = JSON.parse(text);
-    if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) existing = parsed as Record<string, unknown>;
-  } catch (error) {
-    if ((error as NodeJS.ErrnoException).code !== 'ENOENT') {
-      throw new Error(`现有配置文件无法解析，已中止以免覆盖：${configPath}: ${(error as Error).message}`);
-    }
-  }
-
-  const existingPaths = (existing['paths'] ?? {}) as Record<string, unknown>;
-  const nextPaths: Record<string, unknown> = { ...existingPaths };
-  for (const [key, value] of Object.entries(overrides)) {
-    if (key === 'configDir' || value === undefined) continue;
-    nextPaths[key] = value;
-  }
-
-  const next = { ...existing, paths: nextPaths, updatedAt: new Date().toISOString() };
-  await fs.mkdir(configDir, { recursive: true, mode: 0o700 });
-  await fs.writeFile(configPath, `${JSON.stringify(next, null, 2)}\n`, { encoding: 'utf8', mode: 0o600 });
+  // The merge used to live here; it now lives in core/config.ts so that
+  // bootstrap mounts paths through exactly the same code path.
+  const written = await mergeAndWriteConfig(configDir, overrides as PathConfig);
+  const writtenPaths = Object.fromEntries(
+    Object.entries(overrides).filter(([key, value]) => key !== 'configDir' && value !== undefined),
+  );
 
   if (flagBool(flags, 'json')) {
-    process.stdout.write(`${JSON.stringify({ configPath, paths: nextPaths }, null, 2)}\n`);
+    process.stdout.write(`${JSON.stringify({ configPath: written, paths: writtenPaths }, null, 2)}\n`);
   } else {
-    process.stdout.write(`已写入配置：${configPath}\n`);
-    for (const [key, value] of Object.entries(nextPaths)) process.stdout.write(`  ${key} = ${String(value)}\n`);
+    process.stdout.write(`已写入配置：${written}\n`);
+    for (const [key, value] of Object.entries(writtenPaths)) process.stdout.write(`  ${key} = ${String(value)}\n`);
     process.stdout.write('\n配置文件本身不含任何密钥；Cookie 存放在同目录的 cookie.env（0600），可用 --cookie-from-entry-page 获取。\n');
   }
   return 0;

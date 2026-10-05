@@ -441,6 +441,57 @@ test('corpus: a size mismatch is caught before hashing', async () => {
   await rm(destDir, { recursive: true, force: true });
 });
 
+test('bootstrap: --apply mounts every corpus it installs', async () => {
+  // Installing without mounting left the user with a downloaded corpus that
+  // `doctor` still reported as unconfigured, so "bootstrap --apply finished"
+  // did not mean the source was usable. This pins the two halves together.
+  const { runBootstrap } = await load('cli/bootstrap.js');
+  const { mkdtemp, readFile, rm } = await import('node:fs/promises');
+  const os = await import('node:os');
+  const path = await import('node:path');
+
+  const root = await mkdtemp(path.join(os.tmpdir(), 'utcd-boot-mount-'));
+  const configDir = path.join(root, 'config');
+
+  try {
+    const outcome = await runBootstrap({
+      paths: {
+        configDir,
+        workDir: path.join(root, 'work'),
+        chictrCorpus: undefined,
+        xybArchive: undefined,
+        chinadrugtrialsArchive: undefined,
+        ictrpBundle: undefined,
+        ctvDatabase: undefined,
+        ctvMcpServer: undefined,
+        chictrMcpServer: undefined,
+        evidenceRoots: [],
+      },
+      sourceIds: ['chictr_pancreatic_archive'],
+      apply: true,
+      dryRun: false,
+      withCtvIndex: false,
+      maxPages: 1,
+    });
+
+    const step = outcome.steps.find((entry) => entry.sourceId === 'chictr_pancreatic_archive');
+    assert.ok(step, 'bootstrap must report the offline corpus it handles');
+    assert.ok(
+      step.action.includes('挂载'),
+      `an --apply run must mount what it installed, got: ${step.action} (${step.detail ?? ''})`,
+    );
+
+    // The mount must be real, not just claimed in the message.
+    const written = JSON.parse(await readFile(path.join(configDir, 'unified-trial-mcp.config.json'), 'utf8'));
+    assert.ok(
+      typeof written.paths?.chictrCorpus === 'string' && written.paths.chictrCorpus.length > 0,
+      `config must carry chictrCorpus, got: ${JSON.stringify(written.paths)}`,
+    );
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
 test('corpus: a dry run touches neither the network nor the disk', async () => {
   // bootstrap defaults to a dry run; fetch-corpus must behave the same way, or
   // "preview what will happen" becomes a 25 MB surprise.

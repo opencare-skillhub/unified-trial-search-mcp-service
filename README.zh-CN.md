@@ -7,13 +7,22 @@
 [![Node](https://img.shields.io/badge/node-%E2%89%A522.13-brightgreen)](https://nodejs.org/)
 [![TypeScript](https://img.shields.io/badge/TypeScript-5.6-3178C6?logo=typescript&logoColor=white)](https://www.typescriptlang.org/)
 [![MCP](https://img.shields.io/badge/MCP-stdio-8A2BE2)](https://modelcontextprotocol.io/)
-[![Tests](https://img.shields.io/badge/测试-46%20通过-success)](#测试)
+[![Tests](https://img.shields.io/badge/测试-65%20通过-success)](#测试)
 [![Sources](https://img.shields.io/badge/数据源-6%20个通道-orange)](#六个数据通道)
 [![Tools](https://img.shields.io/badge/MCP%20工具-7%20个-blueviolet)](#七个-mcp-工具)
 
 **一个 MCP 入口，同时检索六个临床试验通道 —— 并且绝不对"没查到"的事撒谎。**
 
 > 💚 本项目由 **小胰宝（XiaoYiBao）社区** 贡献者 **Sam** 的用心付出促成，在此致谢。
+
+### 文档导航
+
+| 想知道什么 | 看哪份 |
+|---|---|
+| 新环境怎么部署（三条命令 / 一条脚本） | 本文件 [安装](#安装) 一节 |
+| **三个语料的完整下载 URL、sha256、更新与发布流程** | **[docs/corpus-lifecycle.md](docs/corpus-lifecycle.md)** |
+| 日常运维、排障、数据截止日语义 | [docs/operations.md](docs/operations.md) |
+| 设计决策与边界（ADR） | [SPEC.md](SPEC.md) |
 
 ![架构图：一个封闭的 MCP 工具面覆盖六个通道，由封闭来源注册表编排，返回逐来源的终态](docs/assets/architecture.svg)
 
@@ -328,38 +337,68 @@ npm run build
 
 **只注册这一个。整合工作到此结束。** 其余通道由本服务自己去对接。
 
-### 五分钟上手
+### 新环境部署：三条命令
+
+装完 npm 包之后，把三个离线语料一次装齐并挂好，只剩三条命令：
 
 ```bash
-# 1) 诊断：逐来源报告运行时、依赖、数据路径、新鲜度与会话
-node dist/src/cli/main.js doctor
+npm install -g unified-trial-mcp          # 1) 安装
 
-# 2) 挂载本地资产（写入 <configDir>/unified-trial-mcp.config.json，权限 0600）
-node dist/src/cli/main.js configure \
-  --chictr-corpus     /绝对路径/chictr_pancreatic.db \
-  --xyb-archive       /绝对路径/xyb-chinadrugtrials-data/output \
-  --ictrp-bundle      /绝对路径/ictrp-mcp-service \
-  --ctv-mcp-server    /绝对路径/ctv-mcp-server \
-  --chictr-mcp-server /绝对路径/chictr_trials
+unified-trial-mcp bootstrap               # 2) 先看计划（dry-run，不动任何东西）
+unified-trial-mcp bootstrap --apply       #    确认无误后执行
 
-# 3) 显式初始化（默认 dry-run，只打印计划）
-node dist/src/cli/main.js bootstrap
-node dist/src/cli/main.js bootstrap --apply
-
-# 4) 获取公开发布的 ChiCTR 语料（ADR-008）；先 dry run，再 --apply
-node dist/src/cli/main.js fetch-corpus
-node dist/src/cli/main.js fetch-corpus --apply
-
-# 4) 取得 ChinaDrugTrials 会话（全自动；失败会引导人工兜底）
-node dist/src/cli/main.js configure --cookie-from-entry-page
-
-# 5) 再次诊断
-node dist/src/cli/main.js doctor
+unified-trial-mcp doctor                  # 3) 复验逐来源状态
 ```
+
+`bootstrap --apply` 会**真的把三个语料装上并挂载**，一条命令走完：
+下载 → 校验字节数 → 校验 sha256 → 解压到暂存 → 校验内容 → 原子替换 → 写入配置。
+装完的 `doctor` 应为：
+
+```
+OK   chictr_pancreatic_archive      离线语料可用，共 468 条胰腺癌专题记录。
+OK   xyb_chinadrugtrials_archive    可用数据包 1 个，覆盖关键词：胰腺癌。
+SET  ctv                            已配置 CTV 数据库 …，但未配置上游 MCP 服务目录。
+```
+
+任何一步失败都**不会破坏已装好的数据**，可以安全重试；sha256 不匹配时会中止并保留原数据。
+
+#### 也可以用一条 shell 脚本
+
+仓库里的 `scripts/deploy-corpus.sh` 把同样的流程包成幂等脚本，适合放进部署流水线：
+
+```bash
+./scripts/deploy-corpus.sh                     # 演练：只打印将做什么
+./scripts/deploy-corpus.sh --apply             # 执行
+./scripts/deploy-corpus.sh --apply --corpus ctv_index        # 只装某一个
+./scripts/deploy-corpus.sh --apply --mirror https://内网镜像/  # 内网/被墙环境
+```
+
+它比 `bootstrap --apply` 多两件事：**按语料逐个演练**（每个都先打印 URL、字节数、sha256 再下载），
+以及**镜像支持**（`--mirror` 把 GitHub 前缀整体换掉，也可以用 `file://` 指向本地 tar 包）。
+退出码 `0` 表示脚本的部署动作全部成功 —— 它**不**沿用 `doctor` 的退出码，因为全新环境里
+在线来源本来就没配，照搬会让 `&&` 串接在一切顺利时断掉。
+
+#### 剩下需要人工做的
+
+`bootstrap` 只做**机械化可做**的部分。下面这些它刻意不碰，跳过也不影响已装好的离线语料 ——
+检索时会如实报 `NOT_QUERIED` / `NEEDS_SETUP`，不会伪装成"没有结果"。
+
+| 来源 | 需要什么 | 命令 |
+|---|---|---|
+| ChinaDrugTrials 在线 | 会话 Cookie（一次性） | `configure --cookie-from-entry-page`（自动）或 `configure --cookie-from-curl '<浏览器复制的 cURL>'`（人工） |
+| ICTRP 在线 | 上游 Python 服务 | `configure --ictrp-bundle <ictrp-mcp-service 目录>` |
+| ChiCTR 在线 | 上游服务 | `configure --chictr-mcp-server <chictr_trials 目录>` |
+| CTV 在线 | 上游服务 | `configure --ctv-mcp-server <ctv-mcp-server 目录>`，并在该目录 `npm install && npm run build` |
+
+这些上游是独立的第三方/社区服务，各自需要运行时与依赖。本服务**不去 git clone、不去 npm install
+它们** —— 让一个检索服务在你机器上自动执行上游代码，风险远大于它省下的那几分钟。
 
 `doctor` 退出码：`0` 全部就绪 · `1` 降级但可用 · `2` 没有可用来源。
 
 若任何环节缺失，`doctor` 与 `bootstrap` 会打印**可直接复制的下一条命令**，绝不只给一句"未就绪"。
+
+> 三个语料的完整下载 URL、sha256、更新与发布流程，见
+> [docs/corpus-lifecycle.md](docs/corpus-lifecycle.md)。
 
 ## 配置
 

@@ -50,7 +50,36 @@ https://github.com/<owner>/<repo>/releases/download/<corpusId>-<version>/<corpus
 
 ## 2. 使用者路径：自动化部署
 
-### 2.1 一条命令走完全流程
+### 2.1 最省事：让 bootstrap 全部代劳
+
+新环境装完 npm 包之后，**一条命令**就把三个语料装齐并挂好，不需要你手工挑语料、也不需要
+手工跑 `configure`：
+
+```bash
+unified-trial-mcp bootstrap               # 先看计划（dry-run，不动任何东西）
+unified-trial-mcp bootstrap --apply       # 执行
+unified-trial-mcp doctor                  # 复验
+```
+
+`bootstrap --apply` 对每个可公开获取的语料依次执行 2.1 描述的六步（下载 → 校验字节数 →
+校验 sha256 → 解压到暂存 → 校验内容 → 原子替换），**紧接着把装好的路径写进配置**，
+所以跑完就是可用状态。它只处理公开发布的语料；需要 Cookie 或需要你自备上游服务的来源，
+它只打印下一条命令（见 2.4）。
+
+也可以用仓库里的幂等脚本，适合放进部署流水线：
+
+```bash
+./scripts/deploy-corpus.sh --apply                      # 三个语料全装
+./scripts/deploy-corpus.sh --apply --corpus ctv_index   # 只装某一个
+./scripts/deploy-corpus.sh --apply --mirror https://内网镜像/
+```
+
+脚本比 `bootstrap --apply` 多两件事：**逐个演练**（每个语料先打印 URL、字节数、sha256 再下载）
+与**镜像支持**（`--mirror` 整体替换 GitHub 前缀，也接受 `file://` 本地 tar 包）。
+它的退出码 `0` 表示脚本自身的部署动作全部成功，**不**沿用 `doctor` 的退出码 —— 全新环境的
+在线来源本来就没配，照搬会让 `&&` 串接在一切顺利时断掉。
+
+### 2.2 单独装某一个语料
 
 ```bash
 unified-trial-mcp fetch-corpus --corpus ctv_index --apply
@@ -73,7 +102,7 @@ unified-trial-mcp fetch-corpus --corpus ctv_index --apply
 unified-trial-mcp fetch-corpus --corpus ctv_index          # dry run
 ```
 
-### 2.2 三个语料依次安装
+### 2.3 三个语料依次安装
 
 ```bash
 unified-trial-mcp fetch-corpus --corpus chictr_pancreatic --apply
@@ -83,7 +112,10 @@ unified-trial-mcp fetch-corpus --corpus ctv_index --apply
 
 默认装到 `~/.unified-trial-mcp/corpora/<corpusId>/`。
 
-### 2.3 挂载
+### 2.4 挂载（bootstrap 已代劳，这里是手工场景）
+
+> 走 2.1 的 `bootstrap --apply` 时**不需要**这一步 —— 它会用下面这张表的规则把路径写进配置。
+> 本节适用于你单独跑了 `fetch-corpus`、或想手工指定别处的语料。
 
 三个语料的**目录形状不同**，因为 `configure` 参数指向的东西不同：
 
@@ -113,7 +145,7 @@ corpora/xyb_cde_pancreatic/胰腺癌/summary.json    <- 保留包目录一层
 > `NEEDS_SETUP / NO_ARCHIVE_PACKAGES`（"json、logs、raw、word 均不完整"）。
 > 适配器是在你给的目录**下面一层**找含 `summary.json` 的子目录。
 
-### 2.4 验证
+### 2.5 验证
 
 ```bash
 unified-trial-mcp doctor
@@ -122,7 +154,7 @@ unified-trial-mcp doctor
 每个就绪来源打印 `OK`；离线来源会额外打印**数据截止日**与推导依据。退出码：
 `0` 全部就绪 / `1` 部分未就绪 / `2` 无可用来源。
 
-### 2.5 走镜像或离线机房
+### 2.6 走镜像或离线机房
 
 摘要校验依然生效，只是换了来源：
 
@@ -133,7 +165,7 @@ unified-trial-mcp fetch-corpus --corpus ctv_index --url file:///srv/airgap/ctv_i
 
 完全手工的路径：下载 → `shasum -a 256` 对照清单 → `tar -xzf` → `configure` 挂载。
 
-### 2.6 一次性下齐（脚本化部署）
+### 2.7 一次性下齐（脚本化部署）
 
 ```bash
 curl -LO https://github.com/opencare-skillhub/unified-trial-search-mcp-service/releases/download/chictr_pancreatic-2026-10-05/chictr_pancreatic.tar.gz

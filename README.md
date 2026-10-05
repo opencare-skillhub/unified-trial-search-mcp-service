@@ -15,6 +15,15 @@
 
 > 💚 This project exists thanks to **Sam**, contributor to the [小胰宝 (XiaoYiBao) community](https://github.com/xiaoyibao). His care and hard work made it real.
 
+### Documentation map
+
+| What you want to know | Where to look |
+|---|---|
+| How to deploy to a fresh environment (three commands / one script) | [Install](#install) in this file |
+| **Full download URLs, sha256 digests, and the update/publish workflow for all three corpora** | **[docs/corpus-lifecycle.md](docs/corpus-lifecycle.md)** |
+| Day-to-day operations, troubleshooting, data-cutoff semantics | [docs/operations.md](docs/operations.md) |
+| Design decisions and boundaries (ADRs) | [SPEC.md](SPEC.md) |
+
 ![Architecture: one sealed MCP tool surface over six channels, orchestrated with a closed source registry and a per-source terminal state](docs/assets/architecture.svg)
 
 `doctor` tells you the truth about every channel — and never prints a cookie:
@@ -346,39 +355,73 @@ running `node dist/...` locally never reveals.
 
 **One registration. That is the whole integration.** The service talks to the other channels itself.
 
-### Five-minute setup
+### Deploying to a fresh environment: three commands
+
+After installing the npm package, getting all three offline corpora in place takes three commands:
 
 ```bash
-# 1) Diagnose: per-source runtime, dependencies, data paths, freshness, session
-node dist/src/cli/main.js doctor
+npm install -g unified-trial-mcp          # 1) install
 
-# 2) Mount local assets (writes <configDir>/unified-trial-mcp.config.json, mode 0600)
-node dist/src/cli/main.js configure \
-  --chictr-corpus     /absolute/path/chictr_pancreatic.db \
-  --xyb-archive       /absolute/path/xyb-chinadrugtrials-data/output \
-  --ictrp-bundle      /absolute/path/ictrp-mcp-service \
-  --ctv-mcp-server    /absolute/path/ctv-mcp-server \
-  --chictr-mcp-server /absolute/path/chictr_trials
+unified-trial-mcp bootstrap               # 2) see the plan first (dry-run, touches nothing)
+unified-trial-mcp bootstrap --apply       #    then run it
 
-# 3) Explicit bootstrap (dry-run by default, prints a plan)
-node dist/src/cli/main.js bootstrap
-node dist/src/cli/main.js bootstrap --apply
-
-# 4) Fetch the public ChiCTR corpus (ADR-008); dry-run first, then --apply
-node dist/src/cli/main.js fetch-corpus
-node dist/src/cli/main.js fetch-corpus --apply
-
-# 4) Acquire the ChinaDrugTrials session (automatic; guides you if it fails)
-node dist/src/cli/main.js configure --cookie-from-entry-page
-
-# 5) Re-check
-node dist/src/cli/main.js doctor
+unified-trial-mcp doctor                  # 3) re-check per-source status
 ```
+
+`bootstrap --apply` **really installs and mounts all three corpora**, running the whole chain in one
+go: download → verify byte count → verify sha256 → extract to staging → verify contents → atomic
+replace → write the config. Afterwards `doctor` should report:
+
+```
+OK   chictr_pancreatic_archive      corpus usable, 468 pancreatic-cancer records.
+OK   xyb_chinadrugtrials_archive    1 data package available, keyword: 胰腺癌.
+SET  ctv                            CTV database configured, but no upstream MCP service directory.
+```
+
+If any step fails it **leaves already-installed data untouched** and is safe to retry; a sha256
+mismatch aborts and keeps the previous data.
+
+#### Or one shell script
+
+`scripts/deploy-corpus.sh` wraps the same flow as an idempotent script, for deployment pipelines:
+
+```bash
+./scripts/deploy-corpus.sh                     # dry run: prints what it would do
+./scripts/deploy-corpus.sh --apply             # execute
+./scripts/deploy-corpus.sh --apply --corpus ctv_index        # just one corpus
+./scripts/deploy-corpus.sh --apply --mirror https://mirror/  # behind a firewall
+```
+
+It adds two things `bootstrap --apply` does not: **a per-corpus dry run** (each prints its URL, byte
+count and sha256 before downloading) and **mirror support** (`--mirror` swaps the GitHub prefix, and
+also accepts `file://` for a local tarball). Exit code `0` means the script's own deployment steps
+succeeded — it deliberately does **not** pass through `doctor`'s exit code, because a fresh machine
+has no online sources configured and that would break `&&` chains that actually worked.
+
+#### What still needs a human
+
+`bootstrap` only does what is *mechanically* preparable. It deliberately leaves the following alone;
+skipping them does not affect the installed offline corpora — a search reports `NOT_QUERIED` /
+`NEEDS_SETUP` rather than pretending to have found nothing.
+
+| Source | What it needs | Command |
+|---|---|---|
+| ChinaDrugTrials (online) | a session Cookie, once | `configure --cookie-from-entry-page` (automatic) or `configure --cookie-from-curl '<cURL from your browser>'` (manual) |
+| ICTRP (online) | an upstream Python service | `configure --ictrp-bundle <ictrp-mcp-service dir>` |
+| ChiCTR (online) | an upstream service | `configure --chictr-mcp-server <chictr_trials dir>` |
+| CTV (online) | an upstream service | `configure --ctv-mcp-server <ctv-mcp-server dir>`, then `npm install && npm run build` there |
+
+These upstreams are independent third-party / community services with their own runtimes and
+dependencies. This service **will not git clone or npm install them for you** — letting a search
+service execute upstream code on your machine is a far bigger risk than the few minutes it saves.
 
 `doctor` exit codes: `0` fully ready · `1` degraded but usable · `2` no usable source.
 
 If anything is missing, `doctor` and `bootstrap` print **the exact next command to copy** — never a
 bare "not ready".
+
+> Full download URLs, sha256 digests, and the update/publish workflow for all three corpora:
+> [docs/corpus-lifecycle.md](docs/corpus-lifecycle.md).
 
 ## Configuration
 

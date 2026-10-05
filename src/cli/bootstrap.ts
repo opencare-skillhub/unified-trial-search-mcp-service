@@ -6,7 +6,10 @@
  *
  *  - It never obtains, writes, or prints a Cookie.
  *  - It never launches an interactive browser or solves a CAPTCHA/WAF challenge.
- *  - It never downloads or ships third-party data on the user's behalf.
+ *  - It never runs a third-party installer, clones an upstream repo, or fetches
+ *    anything behind a credential or a challenge. The only payloads it downloads
+ *    are our own publicly published corpus packages (ADR-008 / ADR-009), each
+ *    pinned by sha256 in `corpora/manifest.json`.
  *  - It is idempotent: an already-ready source is reported as skipped, and
  *    nothing already working is rolled back or overwritten.
  *  - Default is a dry run; `--apply` is required to touch anything.
@@ -16,7 +19,8 @@ import path from 'node:path';
 import { promises as fs } from 'node:fs';
 
 import type { ResolvedPaths, SourceId } from '../core/types.js';
-import { checkPathReadable } from '../core/config.js';
+import { checkPathReadable, mergeAndWriteConfig, type PathConfig } from '../core/config.js';
+import { fetchCorpus } from './corpus.js';
 
 export type BootstrapStatus = 'ready' | 'planned' | 'applied' | 'skipped' | 'manual' | 'blocked';
 
@@ -54,6 +58,79 @@ async function exists(target: string | undefined): Promise<boolean> {
   }
 }
 
+/**
+ * Offline sources whose payload is published as a release asset and can therefore
+ * be obtained without the user hunting for files. `chinadrugtrials` is absent on
+ * purpose: that archive is a controlled, credentialed capture and is never
+ * redistributed. Anything added here must have a `basis` in the manifest.
+ */
+const FETCHABLE_CORPUS: Partial<Record<SourceId, string>> = {
+  chictr_pancreatic_archive: 'chictr_pancreatic',
+  xyb_chinadrugtrials_archive: 'xyb_cde_pancreatic',
+};
+
+/**
+ * Downloads and installs one published corpus package.
+ *
+ * `fetchCorpus` does the hazard-free part itself: byte count, sha256, extract to
+ * staging, content check, then an atomic replace that leaves existing data
+ * untouched on any failure. This wrapper only turns its result into a step.
+ */
+async function installCorpus(
+  sourceId: SourceId,
+  corpusId: string,
+  label: string,
+  configDir: string,
+): Promise<BootstrapStep> {
+  try {
+    const result = await fetchCorpus({ corpusId, apply: true });
+
+    // Mount it in the same pass. Installing without mounting left the user with
+    // a downloaded corpus that `doctor` still reported as unconfigured.
+    const mount = MOUNT_KEY[sourceId];
+    if (mount) {
+      // `xybArchive` is the *parent* of the archive payload: the adapter scans
+      // its children for `summary.json`. The others are file paths.
+      const target = mount === 'xybArchive' ? result.corpusDir : result.dbPath;
+      await mergeAndWriteConfig(configDir, { [mount]: target });
+      return {
+        sourceId,
+        status: 'applied',
+        action: `已安装并挂载${label}`,
+        detail: `大小 ${result.bytes} 字节，sha256 ${result.sha256}；已写入 ${mount} = ${target}`,
+      };
+    }
+
+    return {
+      sourceId,
+      status: 'applied',
+      action: `已安装${label}：${result.corpusDir}`,
+      detail: `大小 ${result.bytes} 字节，sha256 ${result.sha256}`,
+    };
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    return {
+      sourceId,
+      status: 'blocked',
+      action: `${label}安装失败`,
+      detail: `${message}（已安装的数据未被改动，可安全重试）`,
+      command: `unified-trial-mcp fetch-corpus --corpus ${corpusId} --apply`,
+    };
+  }
+}
+
+/**
+ * Where each fetched corpus gets mounted. Kept next to FETCHABLE_CORPUS because
+ * the two must stay in step: a corpus that can be installed but not mounted is
+ * a dead end. `chictrCorpus` and `ctvDatabase` are files, `xybArchive` is a
+ * directory of packages.
+ */
+const MOUNT_KEY: Partial<Record<SourceId, keyof PathConfig>> = {
+  chictr_pancreatic_archive: 'chictrCorpus',
+  xyb_chinadrugtrials_archive: 'xybArchive',
+  ctv: 'ctvDatabase',
+};
+
 /** Non-destructive: creates a directory only when it is missing. */
 async function ensureDir(target: string, apply: boolean): Promise<BootstrapStep> {
   if (await exists(target)) {
@@ -87,21 +164,32 @@ export async function runBootstrap(options: BootstrapOptions): Promise<Bootstrap
   for (const [sourceId, target, kind, label] of offline) {
     if (!include(sourceId)) continue;
     if (!target) {
-      // The ChiCTR corpus is published as a release asset, so a cold start can
-      // obtain it without hunting for files. Everything else still has to be
-      // mounted by hand: XYB and the ChinaDrugTrials archive are not ours to
-      // redistribute, and ADR-006's line on credentialed data has not moved.
-      const fetchable = sourceId === 'chictr_pancreatic_archive';
+      // Two of these are published as release assets, so a cold start can
+      // obtain them without hunting for files. The ChinaDrugTrials controlled
+      // archive is not redistributed, and ADR-006's line on credentialed data
+      // has not moved.
+      const corpusId = FETCHABLE_CORPUS[sourceId];
+
+      // On --apply, actually install it. Printing a command and calling that
+      // "bootstrap --apply downloads and verifies the corpus" made the user
+      // believe a step had run when nothing had.
+      if (corpusId !== undefined && apply) {
+        steps.push(await installCorpus(sourceId, corpusId, label, paths.configDir));
+        continue;
+      }
+
       steps.push({
         sourceId,
-        status: 'manual',
+        status: corpusId !== undefined ? 'planned' : 'manual',
         action: `${label}未配置`,
-        detail: fetchable
-          ? '该来源可从公开发布的语料包获取（ADR-008）：bootstrap --apply 会下载、校验 sha256 并原子替换；也可用 --url 指向镜像或本地 tar.gz。'
-          : '该来源需要人工提供的本地数据；bootstrap 不会代为下载或抓取。',
-        command: fetchable
-          ? `unified-trial-mcp fetch-corpus --corpus chictr_pancreatic --apply --dest <绝对目录>`
-          : `unified-trial-mcp configure --${sourceId === 'xyb_chinadrugtrials_archive' ? 'xyb-archive' : 'chinadrugtrials-archive'} <绝对路径>`,
+        detail:
+          corpusId !== undefined
+            ? `将从公开发布的语料包安装（ADR-008 / ADR-009）：下载 → 校验 sha256 → 解压 → 原子替换。加 --apply 即执行；也可用 --url 指向镜像或本地 tar.gz。`
+            : '该来源需要人工提供的本地数据；bootstrap 不会代为下载或抓取（受控数据，不参与再分发）。',
+        command:
+          corpusId !== undefined
+            ? `unified-trial-mcp fetch-corpus --corpus ${corpusId} --apply`
+            : `unified-trial-mcp configure --chinadrugtrials-archive <绝对路径>`,
       });
       continue;
     }
@@ -111,6 +199,26 @@ export async function runBootstrap(options: BootstrapOptions): Promise<Bootstrap
         ? { sourceId, status: 'ready', action: `${label}可读：${target}` }
         : { sourceId, status: 'blocked', action: `${label}不可用：${target}`, detail: `${check.reasonCode}：${check.message}`, command: undefined },
     );
+  }
+
+  // 2b. The CTV index. It has no SourceId of its own -- it is the local index
+  //     that the `ctv` source reads -- so it cannot ride the loop above. It is
+  //     still a published corpus, so a cold start may obtain it the same way.
+  if (include('ctv')) {
+    if (paths.ctvDatabase) {
+      steps.push({ sourceId: 'ctv', status: 'ready', action: `CTV 本地索引已配置：${paths.ctvDatabase}` });
+    } else if (apply) {
+      steps.push(await installCorpus('ctv', 'ctv_index', 'CTV 本地索引', paths.configDir));
+    } else {
+      steps.push({
+        sourceId: 'ctv',
+        status: 'planned',
+        action: 'CTV 本地索引未配置',
+        detail:
+          '将从公开发布的语料包安装（ADR-008 / ADR-009）：下载 → 校验 sha256 → 解压 → 原子替换。加 --apply 即执行；也可用 --url 指向镜像或本地 tar.gz。',
+        command: 'unified-trial-mcp fetch-corpus --corpus ctv_index --apply',
+      });
+    }
   }
 
   // 3. Upstream MCP services: check the build, never install silently.
