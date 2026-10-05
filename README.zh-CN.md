@@ -169,12 +169,25 @@ ictrp:NCT07066098 ┘
 22.13.0 起不再需要 `--experimental-sqlite` 标志。在更低版本上服务仍能启动，其余来源照常可用，
 仅 ChiCTR 语料这一来源报 `NEEDS_SETUP`（`NODE_SQLITE_UNAVAILABLE`）并给出需升级到的版本。
 
+已发布到 npm，可直接安装：
+
+```bash
+npm install -g unified-trial-mcp
+unified-trial-mcp doctor        # 逐来源诊断
+```
+
+或从源码构建：
+
 ```bash
 git clone https://github.com/opencare-skillhub/unified-trial-search-mcp-service.git
 cd unified-trial-search-mcp-service
 npm install
 npm run build
 ```
+
+从源码构建时，`npm run build` 会给编译产物补上可执行位。这一步是必要的：
+`tsc` 输出 0644，若缺少该权限，`npm install -g` 得到的命令会以
+"permission denied" 失败，而本地用 `node dist/...` 运行不会暴露这个问题。
 
 ### 注册到 MCP 客户端
 

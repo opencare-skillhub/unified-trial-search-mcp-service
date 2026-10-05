@@ -73,3 +73,15 @@ jobs:
 
       - name: Guard the closed-registry invariant
         run: node scripts/check-closed-registry.mjs
+
+      # Packaging failures only surface after publishing, so they are checked
+      # here: the bin must be executable and the command must work through a
+      # symlink, which is how npm exposes it.
+      - name: Verify the package is installable and runnable
+        run: |
+          test -x dist/src/cli/main.js || { echo "::error::bin is not executable"; exit 1; }
+          mkdir -p /tmp/pack && cd /tmp/pack
+          npm init -y >/dev/null
+          npm install "$GITHUB_WORKSPACE" >/dev/null
+          ./node_modules/.bin/unified-trial-mcp help | grep -q "unified-trial-mcp"
+          echo "installed package runs through its bin symlink"

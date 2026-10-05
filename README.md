@@ -172,12 +172,26 @@ Node 22.5.0 and stops requiring `--experimental-sqlite` at 22.13.0. On anything 
 the service still starts and every other source keeps working — only the ChiCTR corpus
 reports `NEEDS_SETUP` (`NODE_SQLITE_UNAVAILABLE`) with the version to upgrade to.
 
+Published on npm, so it can be installed directly:
+
+```bash
+npm install -g unified-trial-mcp
+unified-trial-mcp doctor        # per-source diagnostics
+```
+
+Or build from source:
+
 ```bash
 git clone https://github.com/opencare-skillhub/unified-trial-search-mcp-service.git
 cd unified-trial-search-mcp-service
 npm install
 npm run build
 ```
+
+When building from source, `npm run build` sets the executable bit on the
+compiled entry. It matters: `tsc` writes 0644, and without that bit the command
+installed by `npm install -g` fails with "permission denied" - a failure that
+running `node dist/...` locally never reveals.
 
 ### Register with your MCP client
 
