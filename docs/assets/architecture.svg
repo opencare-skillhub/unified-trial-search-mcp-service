@@ -1,0 +1,99 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1180" height="760" viewBox="0 0 1180 760" font-family="'Helvetica Neue', Helvetica, Arial, 'PingFang SC', 'Microsoft YaHei', sans-serif">
+  <defs>
+    <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M 0 0 L 10 5 L 0 10 z" fill="#5a6b7d"/>
+    </marker>
+    <marker id="arrowAccent" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M 0 0 L 10 5 L 0 10 z" fill="#2563eb"/>
+    </marker>
+    <style>
+      .box { fill: #ffffff; stroke: #d3dae3; stroke-width: 1.5; rx: 10; }
+      .lane { fill: #f7f9fc; stroke: #e2e8f0; stroke-width: 1.5; rx: 14; }
+      .t { fill: #1d2530; font-size: 14px; font-weight: 600; }
+      .s { fill: #5a6b7d; font-size: 12px; }
+      .mono { fill: #334155; font-size: 11.5px; font-family: 'SF Mono', Menlo, Consolas, monospace; }
+      .laneTitle { fill: #7c8798; font-size: 11px; font-weight: 700; letter-spacing: 1.4px; }
+      .accent { fill: #eff4ff; stroke: #2563eb; stroke-width: 2; rx: 10; }
+      .accentT { fill: #1d4ed8; font-size: 14px; font-weight: 700; }
+      .flow { stroke: #5a6b7d; stroke-width: 1.6; fill: none; marker-end: url(#arrow); }
+      .flowAccent { stroke: #2563eb; stroke-width: 2; fill: none; marker-end: url(#arrowAccent); }
+      .state { fill: #fff7ed; stroke: #f59e0b; stroke-width: 1.2; rx: 6; }
+    </style>
+  </defs>
+
+  <rect width="1180" height="760" fill="#ffffff"/>
+
+  <text x="40" y="44" class="t" font-size="19">Unified Trial Search MCP — architecture</text>
+  <text x="40" y="66" class="s">One sealed tool surface · six channels · a closed source registry · no way for a caller to name an endpoint, path or credential</text>
+
+  <!-- Client lane -->
+  <rect x="40" y="92" width="1100" height="86" class="lane"/>
+  <text x="60" y="116" class="laneTitle">MCP CLIENT</text>
+  <rect x="60" y="128" width="330" height="36" class="box"/>
+  <text x="76" y="151" class="t">Claude / any MCP client</text>
+  <rect x="410" y="128" width="390" height="36" class="box"/>
+  <text x="426" y="151" class="mono">"mcpServers": { "unified-trial-mcp": … }</text>
+  <rect x="820" y="128" width="300" height="36" class="accent"/>
+  <text x="836" y="150" class="accentT">ONE registration</text>
+
+  <path d="M 460 164 L 460 196" class="flowAccent"/>
+
+  <!-- Tool surface -->
+  <rect x="40" y="196" width="1100" height="150" class="lane"/>
+  <text x="60" y="220" class="laneTitle">TOOL SURFACE — 7 TOOLS, SEALED</text>
+
+  <rect x="60" y="232" width="500" height="98" class="box"/>
+  <text x="78" y="255" class="t">Query — read-only</text>
+  <text x="78" y="276" class="mono">search_trials</text>
+  <text x="78" y="294" class="mono">get_trial_detail · get_record_evidence</text>
+  <text x="78" y="312" class="mono">get_source_status</text>
+  <text x="470" y="255" class="s">never refresh</text>
+  <text x="470" y="272" class="s">never mutate</text>
+
+  <rect x="580" y="232" width="540" height="98" class="box"/>
+  <text x="598" y="255" class="t">Maintenance — explicit only</text>
+  <text x="598" y="276" class="mono">refresh_ictrp · sync_ctv_index</text>
+  <text x="598" y="294" class="mono">sync_chinadrugtrials</text>
+  <text x="980" y="255" class="s">dry-run by default</text>
+
+  <!-- closed registry callout -->
+  <rect x="60" y="358" width="1060" height="44" rx="8" fill="#fef2f2" stroke="#ef4444" stroke-width="1.4"/>
+  <text x="78" y="378" class="t" fill="#b91c1c">Closed registry guarantee</text>
+  <text x="78" y="394" class="s" fill="#b91c1c">Every tool property is checked at build time: no url · path · timeout · cookie · token · secret · command. Sources can only be named from a fixed enum.</text>
+
+  <path d="M 460 402 L 460 434" class="flowAccent"/>
+  <path d="M 700 402 L 700 434" class="flowAccent"/>
+
+  <!-- Orchestrator -->
+  <rect x="40" y="434" width="1100" height="112" class="lane"/>
+  <text x="60" y="458" class="laneTitle">ORCHESTRATION</text>
+  <rect x="60" y="470" width="1060" height="60" class="box"/>
+  <text x="78" y="494" class="t">Orchestrator · 4-way bounded concurrency · 75s global deadline · longest-processing-time-first</text>
+  <text x="78" y="516" class="mono">coverage{queried, unavailable, notQueried} · completeness · truncation · merge on confirmed identity only</text>
+
+  <path d="M 250 546 L 250 578" class="flow"/>
+  <path d="M 460 546 L 460 578" class="flow"/>
+  <path d="M 670 546 L 670 578" class="flow"/>
+  <path d="M 890 546 L 890 578" class="flow"/>
+
+  <!-- Adapters -->
+  <rect x="40" y="578" width="1100" height="104" class="lane"/>
+  <text x="60" y="602" class="laneTitle">ADAPTERS — ONE PER CHANNEL</text>
+  <rect x="60" y="614" width="240" height="52" class="box"/>
+  <text x="74" y="636" class="mono">chinadrugtrials</text>
+  <text x="74" y="654" class="s">controlled scrape · PI data</text>
+  <rect x="315" y="614" width="240" height="52" class="box"/>
+  <text x="329" y="636" class="mono">xyb_…_archive</text>
+  <text x="329" y="654" class="s">offline package · 139</text>
+  <rect x="570" y="614" width="240" height="52" class="box"/>
+  <text x="584" y="636" class="mono">chictr_online</text>
+  <text x="584" y="654" class="s">live · WAF-aware</text>
+  <rect x="825" y="614" width="295" height="52" class="box"/>
+  <text x="839" y="636" class="mono">chictr_pancreatic · ctv · ictrp</text>
+  <text x="839" y="654" class="s">SQLite · local FTS · aggregator</text>
+
+  <!-- Output contract -->
+  <rect x="40" y="702" width="1100" height="44" class="state"/>
+  <text x="60" y="722" class="t" fill="#92400e">Honesty contract — 10 terminal states. Only SUCCESS and NO_RESULTS mean "we actually looked".</text>
+  <text x="60" y="738" class="s" fill="#92400e">NO_RESULTS is never returned bare; ICTRP stays flagged isLowerBound. "I could not look" never becomes "it is not there".</text>
+</svg>

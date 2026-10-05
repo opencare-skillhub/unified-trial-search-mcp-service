@@ -1,0 +1,67 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    name: Node ${{ matrix.node }} on ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        # 20 is the declared floor (`engines.node`); 22 is the current LTS.
+        node: ['20', '22']
+        os: [ubuntu-latest, macos-latest]
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node }}
+          cache: npm
+
+      - name: Install
+        run: npm ci
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Build
+        run: npm run build
+
+      # The suite is run several times because it covers deadline- and
+      # concurrency-sensitive orchestration: a single green run there is weak
+      # evidence, and a race that only shows up occasionally must fail the build.
+      - name: Test (3 runs, to catch timing races)
+        run: |
+          for i in 1 2 3; do
+            echo "--- run $i ---"
+            node --test "test/*.test.mjs"
+          done
+
+      - name: Verify the CLI entry actually starts
+        run: |
+          node dist/src/cli/main.js help
+          node dist/src/cli/main.js doctor --json || true
+
+      # Guards a real regression class: nothing in the shipped tree may contain
+      # a secret file, and no tool schema may accept a caller-supplied URL,
+      # path, timeout, or credential.
+      - name: Guard against committed secrets
+        run: |
+          if [ -f cookie.env ] || [ -f unified-trial-mcp.config.json ]; then
+            echo "::error::A credential file was committed"
+            exit 1
+          fi
+          echo "no credential files tracked"
+
+      - name: Guard the closed-registry invariant
+        run: node scripts/check-closed-registry.mjs

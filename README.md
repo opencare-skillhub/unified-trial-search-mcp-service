@@ -2,6 +2,7 @@
 
 [![中文](https://img.shields.io/badge/README-中文-red)](./README.zh-CN.md)
 [![English](https://img.shields.io/badge/README-English-blue)](./README.md)
+[![CI](https://github.com/opencare-skillhub/unified-trial-search-mcp-service/actions/workflows/ci.yml/badge.svg)](https://github.com/opencare-skillhub/unified-trial-search-mcp-service/actions/workflows/ci.yml)
 [![License](https://img.shields.io/badge/license-MIT-green)](#license)
 [![Node](https://img.shields.io/badge/node-%E2%89%A520-brightgreen)](https://nodejs.org/)
 [![TypeScript](https://img.shields.io/badge/TypeScript-5.6-3178C6?logo=typescript&logoColor=white)](https://www.typescriptlang.org/)
@@ -13,6 +14,12 @@
 **One MCP endpoint that searches six clinical-trial channels at once — and never lies about what it did not find.**
 
 > 💚 This project exists thanks to **Sam**, contributor to the [小胰宝 (XiaoYiBao) community](https://github.com/xiaoyibao). His care and hard work made it real.
+
+![Architecture: one sealed MCP tool surface over six channels, orchestrated with a closed source registry and an honesty contract](docs/assets/architecture.svg)
+
+`doctor` tells you the truth about every channel — and never prints a cookie:
+
+![Terminal output of unified-trial-mcp doctor showing six sources ready and exit code 0](docs/assets/doctor.png)
 
 ---
 
@@ -243,7 +250,9 @@ src/
   tools/        7 MCP tools: schemas, handlers, server
   cli/          single entry: serve / doctor / bootstrap / configure; cookie acquisition
 test/           46 tests: unit, adapters, orchestrator, tools
-docs/           operations manual, test reports
+scripts/        CI guards (closed-registry invariant)
+docs/           operations manual, test reports, diagram assets
+.github/        CI workflow: typecheck, build, 3 test runs, invariant guards
 ```
 
 ## Testing
@@ -262,6 +271,18 @@ Coverage includes: record identity and normalization, merge-only-on-confirmed-id
 contracts against real data, the 4-concurrency / 75-second deadline orchestrator (including the
 distinction between "never started" and "timed out"), all 7 tool schemas and error contracts, cookie
 acquisition and masking, and challenge-page detection.
+
+### Continuous integration
+
+[`.github/workflows/ci.yml`](.github/workflows/ci.yml) runs on every push and pull request across
+**Node 20 and 22** on **Ubuntu and macOS**: typecheck → build → the suite **three times** (this
+project has deadline- and concurrency-sensitive paths, so one green run is weak evidence) → CLI smoke
+test → two invariant guards:
+
+- **No committed secrets** — fails if `cookie.env` or a config file is ever tracked.
+- **Closed registry** — [`scripts/check-closed-registry.mjs`](scripts/check-closed-registry.mjs)
+  re-checks the built schemas from outside the test process, failing the build if any tool property
+  would let a caller name an endpoint, path, timeout, or credential.
 
 Verified end-to-end against live sources: `search_trials` across all six channels, cross-source
 merges, detail and evidence retrieval, maintenance dry-runs, and the full new-environment cookie flow

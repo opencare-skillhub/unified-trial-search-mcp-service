@@ -2,6 +2,7 @@
 
 [![中文](https://img.shields.io/badge/README-中文-red)](./README.zh-CN.md)
 [![English](https://img.shields.io/badge/README-English-blue)](./README.md)
+[![CI](https://github.com/opencare-skillhub/unified-trial-search-mcp-service/actions/workflows/ci.yml/badge.svg)](https://github.com/opencare-skillhub/unified-trial-search-mcp-service/actions/workflows/ci.yml)
 [![License](https://img.shields.io/badge/license-MIT-green)](#许可证)
 [![Node](https://img.shields.io/badge/node-%E2%89%A520-brightgreen)](https://nodejs.org/)
 [![TypeScript](https://img.shields.io/badge/TypeScript-5.6-3178C6?logo=typescript&logoColor=white)](https://www.typescriptlang.org/)
@@ -13,6 +14,12 @@
 **一个 MCP 入口，同时检索六个临床试验通道 —— 并且绝不对"没查到"的事撒谎。**
 
 > 💚 本项目由 **小胰宝（XiaoYiBao）社区** 贡献者 **Sam** 的用心付出促成，在此致谢。
+
+![架构图：一个封闭的 MCP 工具面覆盖六个通道，由封闭来源注册表编排，并以诚实性契约收口](docs/assets/architecture.svg)
+
+`doctor` 如实报告每个通道的状态 —— 且从不打印 Cookie：
+
+![unified-trial-mcp doctor 的终端输出：六个来源全部就绪，退出码 0](docs/assets/doctor.png)
 
 ---
 
@@ -241,7 +248,9 @@ src/
   tools/        7 个 MCP 工具：schemas、handlers、server
   cli/          单一入口：serve / doctor / bootstrap / configure；Cookie 获取
 test/           46 个测试：单元、适配器、编排器、工具
-docs/           运维手册、测试报告
+scripts/        CI 守卫（封闭注册表不变量）
+docs/           运维手册、测试报告、图表资源
+.github/        CI 工作流：类型检查、构建、3 轮测试、不变量守卫
 ```
 
 ## 测试
@@ -262,6 +271,17 @@ npm test
 
 已对真实来源完成端到端验证：六通道全量 `search_trials`、跨源合并、详情与证据检索、
 维护工具 dry-run，以及**在零环境变量下**走通完整的新环境 Cookie 流程。
+
+### 持续集成
+
+[`.github/workflows/ci.yml`](.github/workflows/ci.yml) 在每次 push 与 PR 上运行，矩阵覆盖
+**Node 20 与 22** × **Ubuntu 与 macOS**：类型检查 → 构建 → **连跑 3 轮测试**（本项目含
+时限与并发敏感路径，单轮通过证据不足）→ CLI 冒烟 → 两道不变量守卫：
+
+- **无凭证入库** —— 一旦 `cookie.env` 或配置文件被纳入版本控制即失败。
+- **封闭注册表** —— [`scripts/check-closed-registry.mjs`](scripts/check-closed-registry.mjs)
+  在测试进程之外重新校验构建产物的 schema，任何工具属性一旦允许调用方指定端点、路径、
+  超时或凭证，即判定构建失败。
 
 ## 已知数据注意事项
 

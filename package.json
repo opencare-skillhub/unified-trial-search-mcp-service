@@ -4,8 +4,12 @@
   "private": true,
   "type": "module",
   "description": "统一临床试验检索 MCP 服务",
-  "bin": { "unified-trial-mcp": "./dist/src/cli/main.js" },
-  "engines": { "node": ">=20" },
+  "bin": {
+    "unified-trial-mcp": "./dist/src/cli/main.js"
+  },
+  "engines": {
+    "node": ">=20"
+  },
   "scripts": {
     "build": "tsc -p tsconfig.json",
     "typecheck": "tsc -p tsconfig.json --noEmit",
@@ -19,7 +23,7 @@
     "@modelcontextprotocol/sdk": "^1.0.0"
   },
   "devDependencies": {
-    "typescript": "^5.6.0",
-    "@types/node": "^22.0.0"
+    "@types/node": "^22.0.0",
+    "typescript": "^5.6.0"
   }
 }
