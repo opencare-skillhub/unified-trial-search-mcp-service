@@ -26,7 +26,7 @@
  *
  * Usage:
  *   node scripts/pack-corpus.mjs --corpus chictr_pancreatic --source <data-dir>
- *        [--out <dir>] [--write-manifest]
+ *        [--out <dir>] [--version <YYYY-MM-DD[.N]>] [--write-manifest]
  */
 import { createHash } from 'node:crypto';
 import { createReadStream, createWriteStream } from 'node:fs';
@@ -262,7 +262,7 @@ async function main() {
 
   if (!corpusId || !CORPORA[corpusId]) {
     process.stderr.write(
-      `usage: node scripts/pack-corpus.mjs --corpus <${Object.keys(CORPORA).join('|')}> [--source <data-dir>] [--out <dir>] [--write-manifest]\n`,
+      `usage: node scripts/pack-corpus.mjs --corpus <${Object.keys(CORPORA).join('|')}> [--source <data-dir>] [--out <dir>] [--version <YYYY-MM-DD[.N]>] [--write-manifest]\n`,
     );
     return 2;
   }
@@ -303,7 +303,17 @@ async function main() {
   const info = await stat(assetPath);
   const digest = await sha256(assetPath);
   const manifest = JSON.parse(await readFile(MANIFEST_PATH, 'utf8'));
-  const version = new Date().toISOString().slice(0, 10);
+  // The version names both the release tag and the asset URL, so it must be
+  // decided here and never guessed later. Defaults to today, but an explicit
+  // --version is required to republish: two archives built on the same day would
+  // otherwise claim the same tag, and `gh release create` refuses an existing tag.
+  // Use a suffix (-02) when correcting a same-day release.
+  const explicitVersion = typeof flags.get('version') === 'string' ? flags.get('version') : undefined;
+  if (explicitVersion !== undefined && !/^\d{4}-\d{2}-\d{2}(-\d{2})?$/.test(explicitVersion)) {
+    process.stderr.write(`--version must look like YYYY-MM-DD or YYYY-MM-DD-NN, got: ${explicitVersion}\n`);
+    return 2;
+  }
+  const version = explicitVersion ?? new Date().toISOString().slice(0, 10);
   const entry = {
     url: `https://github.com/opencare-skillhub/unified-trial-search-mcp-service/releases/download/${corpusId}-${version}/${assetName}`,
     bytes: info.size,

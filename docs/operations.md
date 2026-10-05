@@ -119,6 +119,9 @@ sha256 与分发依据；`--apply` 才下载。流程为：下载到临时文件
 这是本服务唯一会代替用户下载数据的地方，且只限上表两类已声明依据的语料；
 需要凭证或需突破 robots/WAF/验证码的数据依然绝不代取。
 
+语料从打包、发版到部署、更新的完整流程（含三个语料的完整 URL 与摘要、每两个月发新版本的步骤）见
+[`docs/corpus-lifecycle.md`](corpus-lifecycle.md)。
+
 该来源为 `READ_ONLY_ARCHIVE`，`maintain()` 直接抛 `NOT_ENABLED`。
 检索范围仅限**胰腺癌专题**，结果会带范围警告；`freshness.staleAfterDays = 90`。
 

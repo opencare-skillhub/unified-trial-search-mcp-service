@@ -527,6 +527,47 @@ test('corpus: the manifest and the packer agree on what a corpus is', async () =
   }
 });
 
+test('corpus: the packer refuses a mistyped version instead of publishing a dead URL', async () => {
+  // Both the release tag and the asset URL are derived from the version, so a
+  // mistyped one produces a URL that 404s for every user forever, and a duplicate
+  // one makes `gh release create` refuse. Asserting on source text does not prove
+  // the flag is read, so this runs the packer and checks what it does.
+  const { execFile } = await import('node:child_process');
+  const { promisify } = await import('node:util');
+  const path = await import('node:path');
+  const { readFile } = await import('node:fs/promises');
+  const { ROOT } = await import('./helpers.mjs');
+  const run = promisify(execFile);
+
+  const manifest = JSON.parse(await readFile(path.join(ROOT, 'corpora', 'manifest.json'), 'utf8'));
+  for (const [corpusId, entry] of Object.entries(manifest.corpora)) {
+    assert.ok(entry.version, `${corpusId} must declare the version it was published under`);
+    // The tag is what a human types into `gh release create` and is embedded in
+    // the download URL, so the URL must carry exactly this version segment.
+    assert.ok(
+      entry.url.includes(`/download/${corpusId}-${entry.version}/`),
+      `${corpusId}: the url tag must be "<id>-<version>", got ${entry.url}`,
+    );
+  }
+
+  // A shape-valid version must be accepted (dry run: no download, no manifest write).
+  const ok = await run(
+    process.execPath,
+    [path.join(ROOT, 'scripts', 'pack-corpus.mjs'), '--corpus', 'ctv_index', '--version', '2031-01-02-03'],
+    { cwd: ROOT },
+  ).catch((error) => error);
+  assert.ok(!ok.code, `a valid --version must be accepted, got exit ${ok.code}`);
+
+  // A mistyped one must be refused, and must not quietly fall back to today.
+  const bad = await run(
+    process.execPath,
+    [path.join(ROOT, 'scripts', 'pack-corpus.mjs'), '--corpus', 'ctv_index', '--version', '2031/01/02'],
+    { cwd: ROOT },
+  ).catch((error) => error);
+  assert.equal(bad.code, 2, 'a malformed --version must fail with exit code 2');
+  assert.match(String(bad.stderr), /--version must look like/, 'and must say what the shape should be');
+});
+
 test('corpus: a network failure explains the actual cause, not just "fetch failed"', async () => {
   // Node surfaces connection problems as `TypeError: fetch failed` with the real
   // reason buried in `cause`. Reporting only the outer message collapses DNS

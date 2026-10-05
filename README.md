@@ -199,6 +199,11 @@ The data remains its originators'. ChiCTR's corpus is a public snapshot transpor
 CDE archive and CTV index are the community's own work, and registering trials may be revised upstream at any
 time, so treat the packaged copies as dated snapshots rather than a source of truth.
 
+**Publishing a new data version?** See [docs/corpus-lifecycle.md](docs/corpus-lifecycle.md) for the full
+lifecycle — packaging, uploading a release, the automated deploy path (download → verify → extract → atomic
+swap → mount → query), how to publish an updated version every couple of months, troubleshooting, and the
+redistribution grounds. It also lists every URL and digest in full.
+
 ### Offline snapshots declare their own data cutoff
 
 The two offline sources are **snapshots**, not live data. Each reports its data cutoff explicitly, because a
