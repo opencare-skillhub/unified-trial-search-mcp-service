@@ -70,19 +70,25 @@
 
 ### 获取离线语料
 
-三个离线语料都以 **Release 资产**发布，冷启动不必再四处找文件：
+三个离线语料都以 **Release 资产**发布，冷启动不必再四处找文件。
+下面全部是公开链接，**不需要任何 token、会话或 VPN**。
 
-| 语料 | 挂载参数 | 压缩后体积 | 分发依据 |
-|---|---|---|---|
-| `chictr_pancreatic` | `configure --chictr-corpus` | 25 MB | **upstream_public** —— ChiCTR 公开且可匿名下载的数据集 |
-| `xyb_cde_pancreatic` | `configure --xyb-archive` | 11 MB | **community_owned** —— 小胰宝社区自采成果，权利人确认可分发 |
-| `ctv_index` | `configure --ctv-database` | 24 MB | **community_owned** —— 社区自建的 CTV 本地索引（1434 条，含全文检索） |
+#### 三个资产
 
-这两条依据**刻意分开**（规范 ADR-009）。只有第一条建立在"数据本身公开"之上；后两条依据的是**社区对自己成果的权利**，
-上游 CDE 站点需要 Cookie 会话、`ctv.veeva.com/robots.txt` 禁止抓取 `/study-search`，这些都与**该依据无关**，绝不能拿来论证它。
-把两者混为一谈，等于悄悄废掉"本服务绝不代取需凭证数据"这条底线。
+| 语料 | 下载 | 字节数 | sha256（前 16 位） | 挂载参数 | 依据 |
+|---|---|---|---|---|---|
+| `chictr_pancreatic` | [chictr_pancreatic.tar.gz](https://github.com/opencare-skillhub/unified-trial-search-mcp-service/releases/download/chictr_pancreatic-2026-10-05/chictr_pancreatic.tar.gz) | 25,381,264 | `abbfc53ba346741b` | `--chictr-corpus` | `upstream_public` |
+| `xyb_cde_pancreatic` | [xyb_cde_pancreatic.tar.gz](https://github.com/opencare-skillhub/unified-trial-search-mcp-service/releases/download/xyb_cde_pancreatic-2026-10-05/xyb_cde_pancreatic.tar.gz) | 11,032,155 | `d1ccdac0ef5462a6` | `--xyb-archive` | `community_owned` |
+| `ctv_index` | [ctv_index.tar.gz](https://github.com/opencare-skillhub/unified-trial-search-mcp-service/releases/download/ctv_index-2026-10-05/ctv_index.tar.gz) | 23,964,370 | `41f07ea5a0b7c1b8` | `--ctv-database` | `community_owned` |
 
-各语料安装后的目录形状不同，各自匹配自己的适配器：
+完整摘要见 [`corpora/manifest.json`](corpora/manifest.json)，它同时也是 `fetch-corpus` 强制校验的契约。
+Release 页面：[chictr](https://github.com/opencare-skillhub/unified-trial-search-mcp-service/releases/tag/chictr_pancreatic-2026-10-05) ·
+[xyb_cde](https://github.com/opencare-skillhub/unified-trial-search-mcp-service/releases/tag/xyb_cde_pancreatic-2026-10-05) ·
+[ctv_index](https://github.com/opencare-skillhub/unified-trial-search-mcp-service/releases/tag/ctv_index-2026-10-05)。
+
+#### 自动方式（推荐）
+
+会校验 sha256 与字节数；任何一步失败都**不会损坏你已有的数据**：
 
 ```bash
 unified-trial-mcp fetch-corpus --corpus chictr_pancreatic --apply
@@ -94,6 +100,57 @@ unified-trial-mcp configure --xyb-archive ~/.unified-trial-mcp/corpora/xyb_cde_p
 unified-trial-mcp fetch-corpus --corpus ctv_index --apply
 unified-trial-mcp configure --ctv-database ~/.unified-trial-mcp/corpora/ctv_index/ctv.db
 ```
+
+先去掉 `--apply` 就是演练：只打印将访问的 URL、字节数、摘要与分发依据，不下载任何内容。
+`unified-trial-mcp bootstrap` 会交互式走完整个冷启动，并可串联上述步骤。
+
+#### 手动方式（走镜像、离线机房，或 Release 不可达时）
+
+用任意手段下载上面三个链接，逐一对照 `corpora/manifest.json` 校验摘要，解压后挂载：
+
+```bash
+# 1. 校验（以 chictr 为例）
+shasum -a 256 chictr_pancreatic.tar.gz   # 必须等于清单中的 sha256
+
+# 2. 解压 —— 注意三个语料解压后的目录层级并不相同
+tar -xzf chictr_pancreatic.tar.gz -C ~/.unified-trial-mcp/corpora/
+tar -xzf xyb_cde_pancreatic.tar.gz -C ~/.unified-trial-mcp/corpora/
+tar -xzf ctv_index.tar.gz -C ~/.unified-trial-mcp/corpora/
+
+# 3. 挂载解压出来的路径
+unified-trial-mcp configure \
+  --chictr-corpus ~/.unified-trial-mcp/corpora/chictr_pancreatic/chictr_pancreatic.db \
+  --xyb-archive   ~/.unified-trial-mcp/corpora/xyb_cde_pancreatic \
+  --ctv-database  ~/.unified-trial-mcp/corpora/ctv_index/ctv.db
+
+unified-trial-mcp doctor   # 每个就绪来源都会打印 OK
+```
+
+也可以让 `fetch-corpus` 直接指向自建镜像，不必手工拷贝——摘要校验依然生效：
+
+```bash
+unified-trial-mcp fetch-corpus --corpus ctv_index --url https://your-mirror/ctv_index.tar.gz --apply
+unified-trial-mcp fetch-corpus --corpus ctv_index --url file:///srv/airgap/ctv_index.tar.gz --apply
+```
+
+**解压层级并不统一**，装错不会在安装时报错，而是在**查询时**才暴露。两个参数指向**文件**
+（`--chictr-corpus`、`--ctv-database`），数据包直接位于语料目录下；`--xyb-archive` 指向**数据包的父目录**
+——适配器要在其下扫描含 `summary.json` 的子目录——所以该包保留一层目录：
+
+```
+corpora/chictr_pancreatic/chictr_pancreatic.db   <- 文件直接在目录下
+corpora/ctv_index/ctv.db                         <- 文件直接在目录下
+corpora/xyb_cde_pancreatic/胰腺癌/summary.json    <- 保留包目录一层
+```
+
+#### 分发依据（为什么这三个可以分发）
+
+这两条依据**刻意分开**（规范 ADR-009）。只有第一条建立在"数据本身公开"之上；后两条依据的是**社区对自己成果的权利**，
+上游 CDE 站点需要 Cookie 会话、`ctv.veeva.com/robots.txt` 禁止抓取 `/study-search`，这些都与**该依据无关**，绝不能拿来论证它。
+把两者混为一谈，等于悄悄废掉"本服务绝不代取需凭证数据"这条底线。
+
+`ctv_index` 只含索引，**不含**上游 `ctv-mcp-server` 代码。它仍需单独的代码目录（见[环境要求](#环境要求)）；
+`fetch-corpus` 会明确打印这条要求，而不是暗示来源已就绪。
 
 其中两个参数指向**文件**（`--chictr-corpus`、`--ctv-database`），数据包直接落在安装目录下；
 `--xyb-archive` 指向**数据包的父目录**（适配器要在其下扫描含 `summary.json` 的子目录），所以该包保留一层目录。
@@ -323,6 +380,25 @@ unified-trial-mcp configure --cookie-from-curl '<浏览器「复制为 cURL」�
 没有解验证码、没有破挑战、没有规避限流、没有伪造凭证。这与"击败访问控制"有本质区别，
 后者本服务永不做。`doctor` 与 `bootstrap` **绝不**自行获取 Cookie，只打印命令并说明失败原因。
 服务也不读取其他项目的配置文件或浏览器 Profile。
+
+### 备用手动配置（不走交互式 bootstrap）
+
+不想用 `bootstrap`，或它检测有误时，可以直接用 `configure` 逐项指定。所有路径必须是**绝对路径**，
+且要落在 allowlist 之内；含中文的路径无需转义：
+
+```bash
+unified-trial-mcp configure \
+  --chictr-corpus   ~/.unified-trial-mcp/corpora/chictr_pancreatic/chictr_pancreatic.db \
+  --xyb-archive     ~/.unified-trial-mcp/corpora/xyb_cde_pancreatic \
+  --ctv-database    ~/.unified-trial-mcp/corpora/ctv_index/ctv.db \
+  --ctv-mcp-server  /path/to/ctv-mcp-server \
+  --chictr-mcp-server /path/to/chictr_trials \
+  --ictrp-bundle    /path/to/ictrp-mcp-service
+```
+
+配置写在 `~/.unified-trial-mcp/unified-trial-mcp.config.json`（**永不含秘密**）；ChinaDrugTrials 的
+Cookie 单独存在同目录 `cookie.env`（权限 0600）。三个离线语料都不配置也能跑，
+只是对应来源会报 `NEEDS_SETUP` 并给出修复命令，不影响其余来源。
 
 ## 安全边界
 

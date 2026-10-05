@@ -69,21 +69,25 @@ including the **NMPA/ChinaDrugTrials investigator information** that no other MC
 
 ### Getting the offline corpora
 
-Three offline corpora ship as **release assets**, so a cold start does not require hunting for files:
+Three offline corpora ship as **release assets**, so a cold start does not require hunting for files.
+Everything below is public; nothing needs a token, a session or a VPN.
 
-| Corpus | Flag to mount | Size (packed) | Basis for redistribution |
-|---|---|---|---|
-| `chictr_pancreatic` | `configure --chictr-corpus` | 25 MB | **upstream_public** — ChiCTR publishes this data publicly and anonymously |
-| `xyb_cde_pancreatic` | `configure --xyb-archive` | 11 MB | **community_owned** — the Xiaoyibao community's own scraping output; distributed because its author holds the rights to that output |
-| `ctv_index` | `configure --ctv-database` | 24 MB | **community_owned** — the community's own locally-built CTV index (1,434 studies with full-text search) |
+#### The three assets
 
-Those two bases are deliberately kept distinct (ADR-009 in the spec). Only the first rests on "the data is
-public". The other two are the community's own work product: the fact that the upstream CDE site needs a
-credentialed session, and that `ctv.veeva.com/robots.txt` forbids crawling `/study-search`, is *irrelevant*
-to that basis and must never be used to justify it. Conflating the two would quietly dissolve the rule that
-this service never fetches credentialed data for you.
+| Corpus | Download | Size | sha256 (first 16) | Mount flag | Basis |
+|---|---|---|---|---|---|
+| `chictr_pancreatic` | [chictr_pancreatic.tar.gz](https://github.com/opencare-skillhub/unified-trial-search-mcp-service/releases/download/chictr_pancreatic-2026-10-05/chictr_pancreatic.tar.gz) | 25,381,264 B | `abbfc53ba346741b` | `--chictr-corpus` | `upstream_public` |
+| `xyb_cde_pancreatic` | [xyb_cde_pancreatic.tar.gz](https://github.com/opencare-skillhub/unified-trial-search-mcp-service/releases/download/xyb_cde_pancreatic-2026-10-05/xyb_cde_pancreatic.tar.gz) | 11,032,155 B | `d1ccdac0ef5462a6` | `--xyb-archive` | `community_owned` |
+| `ctv_index` | [ctv_index.tar.gz](https://github.com/opencare-skillhub/unified-trial-search-mcp-service/releases/download/ctv_index-2026-10-05/ctv_index.tar.gz) | 23,964,370 B | `41f07ea5a0b7c1b8` | `--ctv-database` | `community_owned` |
 
-Each corpus is installed to match what its own adapter expects, which is not the same shape:
+Full digests are in [`corpora/manifest.json`](corpora/manifest.json), which is the contract `fetch-corpus`
+enforces. Release pages: [chictr](https://github.com/opencare-skillhub/unified-trial-search-mcp-service/releases/tag/chictr_pancreatic-2026-10-05) ·
+[xyb_cde](https://github.com/opencare-skillhub/unified-trial-search-mcp-service/releases/tag/xyb_cde_pancreatic-2026-10-05) ·
+[ctv_index](https://github.com/opencare-skillhub/unified-trial-search-mcp-service/releases/tag/ctv_index-2026-10-05).
+
+#### Automatic (recommended)
+
+Checksums are verified, and a failure leaves your existing data byte-identical:
 
 ```bash
 unified-trial-mcp fetch-corpus --corpus chictr_pancreatic --apply
@@ -95,6 +99,62 @@ unified-trial-mcp configure --xyb-archive ~/.unified-trial-mcp/corpora/xyb_cde_p
 unified-trial-mcp fetch-corpus --corpus ctv_index --apply
 unified-trial-mcp configure --ctv-database ~/.unified-trial-mcp/corpora/ctv_index/ctv.db
 ```
+
+Drop `--apply` first to see a dry run (URL, byte count, digest, basis) without downloading anything.
+`unified-trial-mcp bootstrap` walks the whole cold start interactively and can chain these steps.
+
+#### Manual (mirrors, air-gapped hosts, or if a release is unreachable)
+
+Download the three links above by any means, verify each digest against `corpora/manifest.json`, extract,
+then mount the extracted paths:
+
+```bash
+# 1. verify (example: chictr)
+shasum -a 256 chictr_pancreatic.tar.gz   # must equal the manifest's sha256
+
+# 2. extract — note the resulting layout differs per corpus
+tar -xzf chictr_pancreatic.tar.gz -C ~/.unified-trial-mcp/corpora/
+tar -xzf xyb_cde_pancreatic.tar.gz -C ~/.unified-trial-mcp/corpora/
+tar -xzf ctv_index.tar.gz -C ~/.unified-trial-mcp/corpora/
+
+# 3. mount the extracted paths
+unified-trial-mcp configure \
+  --chictr-corpus ~/.unified-trial-mcp/corpora/chictr_pancreatic/chictr_pancreatic.db \
+  --xyb-archive   ~/.unified-trial-mcp/corpora/xyb_cde_pancreatic \
+  --ctv-database  ~/.unified-trial-mcp/corpora/ctv_index/ctv.db
+
+unified-trial-mcp doctor   # every ready source prints OK
+```
+
+Or point `fetch-corpus` at your own mirror instead of copying by hand — the digest check still applies:
+
+```bash
+unified-trial-mcp fetch-corpus --corpus ctv_index --url https://your-mirror/ctv_index.tar.gz --apply
+unified-trial-mcp fetch-corpus --corpus ctv_index --url file:///srv/airgap/ctv_index.tar.gz --apply
+```
+
+**Extraction is not uniform**, and getting it wrong fails at query time rather than at install time. Two flags
+name a **file** (`--chictr-corpus`, `--ctv-database`), so the payload sits directly under the corpus
+directory; `--xyb-archive` names the **parent of packages** — the adapter scans it for subdirectories holding
+`summary.json` — so that package keeps one directory level:
+
+```
+corpora/chictr_pancreatic/chictr_pancreatic.db   <- file directly inside
+corpora/ctv_index/ctv.db                         <- file directly inside
+corpora/xyb_cde_pancreatic/胰腺癌/summary.json    <- package stays nested
+```
+
+#### Bases for redistribution (why these three are distributable)
+
+Those two bases are deliberately kept distinct (ADR-009 in the spec). Only the first rests on "the data is
+public". The other two are the community's own work product: the fact that the upstream CDE site needs a
+credentialed session, and that `ctv.veeva.com/robots.txt` forbids crawling `/study-search`, is *irrelevant*
+to that basis and must never be used to justify it. Conflating the two would quietly dissolve the rule that
+this service never fetches credentialed data for you.
+
+The `ctv_index` corpus carries the index only — **not** the upstream `ctv-mcp-server` code. It still needs its
+own checkout (see [Requirements](#requirements)); `fetch-corpus` prints that requirement rather than implying
+the source is ready.
 
 Two of those flags name a **file** (`--chictr-corpus`, `--ctv-database`), so the payload lands directly under
 the install directory; `--xyb-archive` names the **parent of packages** (the adapter scans it for
@@ -340,6 +400,26 @@ credential is forged. That is categorically different from defeating an access c
 service never does. `doctor` and `bootstrap` **never** acquire a cookie themselves; they only print
 the command and explain what failed. The service never reads another project's config file or a
 browser profile.
+
+### Manual configuration (instead of interactive bootstrap)
+
+If you would rather not run `bootstrap`, or it misdetects something, point `configure` at each asset directly.
+Paths must be **absolute** and inside the allowlist; non-ASCII paths need no escaping:
+
+```bash
+unified-trial-mcp configure \
+  --chictr-corpus   ~/.unified-trial-mcp/corpora/chictr_pancreatic/chictr_pancreatic.db \
+  --xyb-archive     ~/.unified-trial-mcp/corpora/xyb_cde_pancreatic \
+  --ctv-database    ~/.unified-trial-mcp/corpora/ctv_index/ctv.db \
+  --ctv-mcp-server  /path/to/ctv-mcp-server \
+  --chictr-mcp-server /path/to/chictr_trials \
+  --ictrp-bundle    /path/to/ictrp-mcp-service
+```
+
+Configuration lives in `~/.unified-trial-mcp/unified-trial-mcp.config.json` and **never contains a secret**;
+the ChinaDrugTrials cookie is kept separately in `cookie.env` (mode 0600) in the same directory. All three
+offline corpora are optional: a missing one only makes its own source report `NEEDS_SETUP` with a fix command,
+and never blocks the others.
 
 ## Safety boundaries
 
