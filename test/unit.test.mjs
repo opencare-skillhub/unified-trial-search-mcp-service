@@ -535,9 +535,17 @@ test('corpus: the packer refuses a mistyped version instead of publishing a dead
   const { execFile } = await import('node:child_process');
   const { promisify } = await import('node:util');
   const path = await import('node:path');
-  const { readFile } = await import('node:fs/promises');
+  const { readFile, writeFile, mkdir, mkdtemp } = await import('node:fs/promises');
+  const { tmpdir } = await import('node:os');
   const { ROOT } = await import('./helpers.mjs');
   const run = promisify(execFile);
+
+  // Build a throwaway source dir rather than packing a real corpus: the packer
+  // resolves `--source` per corpus from the author's machine by default, so
+  // relying on one makes this test pass locally and fail on any clean checkout.
+  const source = await mkdtemp(path.join(tmpdir(), 'ut-pack-src-'));
+  await mkdir(source, { recursive: true });
+  await writeFile(path.join(source, 'ctv.db'), 'not a real database, only bytes\n', 'utf8');
 
   const manifest = JSON.parse(await readFile(path.join(ROOT, 'corpora', 'manifest.json'), 'utf8'));
   for (const [corpusId, entry] of Object.entries(manifest.corpora)) {
@@ -553,15 +561,25 @@ test('corpus: the packer refuses a mistyped version instead of publishing a dead
   // A shape-valid version must be accepted (dry run: no download, no manifest write).
   const ok = await run(
     process.execPath,
-    [path.join(ROOT, 'scripts', 'pack-corpus.mjs'), '--corpus', 'ctv_index', '--version', '2031-01-02-03'],
+    [
+      path.join(ROOT, 'scripts', 'pack-corpus.mjs'),
+      '--corpus', 'ctv_index',
+      '--source', source,
+      '--version', '2031-01-02-03',
+    ],
     { cwd: ROOT },
   ).catch((error) => error);
-  assert.ok(!ok.code, `a valid --version must be accepted, got exit ${ok.code}`);
+  assert.ok(!ok.code, `a valid --version must be accepted, got exit ${ok.code}: ${ok.stderr ?? ''}`);
 
   // A mistyped one must be refused, and must not quietly fall back to today.
   const bad = await run(
     process.execPath,
-    [path.join(ROOT, 'scripts', 'pack-corpus.mjs'), '--corpus', 'ctv_index', '--version', '2031/01/02'],
+    [
+      path.join(ROOT, 'scripts', 'pack-corpus.mjs'),
+      '--corpus', 'ctv_index',
+      '--source', source,
+      '--version', '2031/01/02',
+    ],
     { cwd: ROOT },
   ).catch((error) => error);
   assert.equal(bad.code, 2, 'a malformed --version must fail with exit code 2');
