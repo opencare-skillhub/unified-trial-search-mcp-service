@@ -314,3 +314,25 @@ test('docs: the status table documents exactly the states the code can return', 
     );
   }
 });
+
+test('cli: a symlinked entry still runs the program', async () => {
+  // `npm install -g` exposes the command as a symlink in the global bin dir, so
+  // process.argv[1] is the LINK path while import.meta.url is already resolved.
+  // Comparing them literally made the CLI a silent no-op that exited 0 after
+  // installation - invisible when running the real path from the source tree.
+  const { execFileSync } = await import('node:child_process');
+  const { mkdtempSync, symlinkSync } = await import('node:fs');
+  const os = await import('node:os');
+  const path = await import('node:path');
+  const { ROOT, DIST } = await import('./helpers.mjs');
+
+  const entry = path.join(DIST, 'cli', 'main.js');
+  const dir = mkdtempSync(path.join(os.tmpdir(), 'utcd-symlink-'));
+  const link = path.join(dir, 'unified-trial-mcp');
+  symlinkSync(entry, link);
+
+  const out = execFileSync(link, ['help'], { encoding: 'utf8' });
+  assert.ok(out.includes('unified-trial-mcp'), 'a symlinked entry must still print usage');
+  assert.ok(out.length > 50, 'the CLI must do real work, not exit silently');
+  assert.ok(ROOT.length > 0);
+});

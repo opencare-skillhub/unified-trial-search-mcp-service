@@ -1,3 +1,4 @@
+#!/usr/bin/env node
 /**
  * Single-entry CLI (SPEC 4.1 / ADR-006).
  *
@@ -17,7 +18,7 @@
  */
 
 import path from 'node:path';
-import { promises as fs } from 'node:fs';
+import { promises as fs, realpathSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 
 import { CONFIG_FILE_NAME, defaultConfigDir, loadConfig, type PathConfig } from '../core/config.js';
@@ -453,10 +454,32 @@ export async function main(argv: string[]): Promise<number> {
   }
 }
 
-// Only auto-run when executed as a program, not when imported by a test.
-const invoked = process.argv[1] ? path.resolve(process.argv[1]) : '';
-const self = fileURLToPath(import.meta.url);
-if (invoked === self) {
+/**
+ * Decide whether this module was launched as a program, rather than imported by
+ * a test.
+ *
+ * The comparison must go through `realpath` on both sides. `npm install -g`
+ * exposes the command as a SYMLINK in the global bin directory, so
+ * `process.argv[1]` is the link path while `import.meta.url` is already the
+ * resolved real path. Comparing them literally makes the two differ, and the
+ * CLI then does nothing at all and exits 0 - a silent no-op that only appears
+ * after installation, never when running the file directly from the source tree.
+ */
+function invokedAsProgram(): boolean {
+  const self = fileURLToPath(import.meta.url);
+  const entry = process.argv[1];
+  if (!entry) return false;
+  const resolvedEntry = path.resolve(entry);
+  if (resolvedEntry === self) return true;
+  try {
+    return realpathSync(resolvedEntry) === realpathSync(self);
+  } catch {
+    // A missing or unreadable argv[1] cannot be this file.
+    return false;
+  }
+}
+
+if (invokedAsProgram()) {
   main(process.argv.slice(2))
     .then((code) => {
       process.exitCode = code;

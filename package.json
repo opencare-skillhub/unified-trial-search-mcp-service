@@ -1,9 +1,8 @@
 {
   "name": "unified-trial-mcp",
   "version": "0.1.0",
-  "private": true,
   "type": "module",
-  "description": "统一临床试验检索 MCP 服务",
+  "description": "统一临床试验检索 MCP 服务：一个 MCP 入口覆盖 ICTRP、ClinicalTrials.gov、ChiCTR 与中国药物临床试验登记平台（含研究者信息）。",
   "bin": {
     "unified-trial-mcp": "./dist/src/cli/main.js"
   },
@@ -11,13 +10,15 @@
     "node": ">=22.13.0"
   },
   "scripts": {
-    "build": "tsc -p tsconfig.json",
+    "build": "tsc -p tsconfig.json && node scripts/make-bin-executable.mjs",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "pretest": "tsc -p tsconfig.json",
     "test": "node --test test/*.test.mjs",
     "start": "node dist/src/cli/main.js",
     "doctor": "node dist/src/cli/main.js doctor",
-    "bootstrap": "node dist/src/cli/main.js bootstrap"
+    "bootstrap": "node dist/src/cli/main.js bootstrap",
+    "prepack": "npm run build",
+    "prepublishOnly": "npm run typecheck && npm test"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.0.0"
@@ -25,5 +26,39 @@
   "devDependencies": {
     "@types/node": "^22.0.0",
     "typescript": "^5.6.0"
-  }
+  },
+  "keywords": [
+    "mcp",
+    "clinical-trials",
+    "clinicaltrials.gov",
+    "chictr",
+    "ictrp",
+    "chinadrugtrials",
+    "trial-search",
+    "model-context-protocol",
+    "小胰宝",
+    "临床试验"
+  ],
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/opencare-skillhub/unified-trial-search-mcp-service.git"
+  },
+  "homepage": "https://github.com/opencare-skillhub/unified-trial-search-mcp-service#readme",
+  "bugs": {
+    "url": "https://github.com/opencare-skillhub/unified-trial-search-mcp-service/issues"
+  },
+  "author": "Sam (小胰宝社区 / XiaoYiBao community)",
+  "publishConfig": {
+    "access": "public",
+    "provenance": true
+  },
+  "files": [
+    "dist/src/**/*.js",
+    "!dist/src/**/*.map",
+    "README.md",
+    "README.zh-CN.md",
+    "LICENSE",
+    "docs/operations.md"
+  ]
 }
