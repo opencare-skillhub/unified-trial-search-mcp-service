@@ -20,7 +20,7 @@ import { promises as fs } from 'node:fs';
 
 import type { ResolvedPaths, SourceId } from '../core/types.js';
 import { checkPathReadable, mergeAndWriteConfig, type PathConfig } from '../core/config.js';
-import { fetchCorpus } from './corpus.js';
+import { fetchCorpus, type CorpusDeps } from './corpus.js';
 
 export type BootstrapStatus = 'ready' | 'planned' | 'applied' | 'skipped' | 'manual' | 'blocked';
 
@@ -46,6 +46,13 @@ export interface BootstrapOptions {
   withCtvIndex: boolean;
   maxPages: number;
   keyword?: string;
+  /**
+   * Seam for tests. Installing a corpus is a real network download, so a test
+   * that exercises the install-and-mount path would otherwise need GitHub to be
+   * reachable — and would fail for a reason that has nothing to do with what it
+   * asserts. Forwarded verbatim to `fetchCorpus`.
+   */
+  corpusDeps?: CorpusDeps;
 }
 
 async function exists(target: string | undefined): Promise<boolean> {
@@ -81,9 +88,20 @@ async function installCorpus(
   corpusId: string,
   label: string,
   configDir: string,
+  corpusDeps?: CorpusDeps,
 ): Promise<BootstrapStep> {
   try {
-    const result = await fetchCorpus({ corpusId, apply: true });
+    // Install under the config directory in force, not under the home
+    // directory. `fetchCorpus` defaults to `~/.unified-trial-mcp/corpora`, so a
+    // host that redirects its config with UNIFIED_TRIAL_CONFIG_DIR - a
+    // container, a shared box, CI - still had corpora written into someone's
+    // home. This is the same bug as the one behind `workDir`: anything derived
+    // from `defaultConfigDir()` instead of the config dir actually in force
+    // escapes the directory the operator pointed the service at.
+    const result = await fetchCorpus(
+      { corpusId, apply: true, destDir: path.join(configDir, 'corpora') },
+      corpusDeps,
+    );
 
     // Mount it in the same pass. Installing without mounting left the user with
     // a downloaded corpus that `doctor` still reported as unconfigured.
@@ -174,7 +192,9 @@ export async function runBootstrap(options: BootstrapOptions): Promise<Bootstrap
       // "bootstrap --apply downloads and verifies the corpus" made the user
       // believe a step had run when nothing had.
       if (corpusId !== undefined && apply) {
-        steps.push(await installCorpus(sourceId, corpusId, label, paths.configDir));
+        steps.push(
+          await installCorpus(sourceId, corpusId, label, paths.configDir, options.corpusDeps),
+        );
         continue;
       }
 
@@ -208,7 +228,9 @@ export async function runBootstrap(options: BootstrapOptions): Promise<Bootstrap
     if (paths.ctvDatabase) {
       steps.push({ sourceId: 'ctv', status: 'ready', action: `CTV 本地索引已配置：${paths.ctvDatabase}` });
     } else if (apply) {
-      steps.push(await installCorpus('ctv', 'ctv_index', 'CTV 本地索引', paths.configDir));
+      steps.push(
+        await installCorpus('ctv', 'ctv_index', 'CTV 本地索引', paths.configDir, options.corpusDeps),
+      );
     } else {
       steps.push({
         sourceId: 'ctv',

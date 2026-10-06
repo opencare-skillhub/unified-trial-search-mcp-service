@@ -67,6 +67,38 @@ test('cookie: the cookie env file is parsed without ever leaking or inventing se
   assert.equal(absent.secrets.has('CHINADRUGTRIALS_COOKIE'), false);
 });
 
+test('config: the work directory follows the config directory, not the home directory', async () => {
+  // Redirecting the config directory moved the config file and the cookie, but
+  // `bootstrap` still created `~/.unified-trial-mcp/work` in the user's home:
+  // workDir defaulted off `defaultConfigDir()` (the homedir) instead of the
+  // configDir in force. On a shared or containerised host that writes outside
+  // the directory the operator pointed the service at.
+  const { loadConfig } = await load('core/config.js');
+  const missing = async () => {
+    const e = new Error('ENOENT');
+    e.code = 'ENOENT';
+    throw e;
+  };
+
+  // Via the environment, which is how a container or CI points it elsewhere.
+  const viaEnv = await loadConfig({}, { env: { UNIFIED_TRIAL_CONFIG_DIR: '/srv/trials-cfg' }, readFile: missing });
+  assert.equal(viaEnv.paths.configDir, '/srv/trials-cfg');
+  assert.equal(
+    viaEnv.paths.workDir,
+    '/srv/trials-cfg/work',
+    `the work directory must live under the config directory in force, got: ${viaEnv.paths.workDir}`,
+  );
+
+  // Via the flag. An explicit --work-dir still wins over both.
+  const viaFlag = await loadConfig({ configDir: '/srv/other-cfg' }, { env: {}, readFile: missing });
+  assert.equal(viaFlag.paths.workDir, '/srv/other-cfg/work');
+  const explicit = await loadConfig(
+    { configDir: '/srv/other-cfg', workDir: '/scratch/work' },
+    { env: {}, readFile: missing },
+  );
+  assert.equal(explicit.paths.workDir, '/scratch/work');
+});
+
 test('normalizer: registry numbers are normalized but never fuzzy-matched', async () => {
   const { normalizeRegistryNumber } = await load('core/normalizer.js');
   assert.equal(normalizeRegistryNumber('nct-03558945'), 'NCT03558945');
@@ -445,15 +477,46 @@ test('bootstrap: --apply mounts every corpus it installs', async () => {
   // Installing without mounting left the user with a downloaded corpus that
   // `doctor` still reported as unconfigured, so "bootstrap --apply finished"
   // did not mean the source was usable. This pins the two halves together.
+  //
+  // The download is served from a local `file://` tarball rather than GitHub:
+  // the point here is install-and-mount, and letting the real Release decide
+  // whether this test passes made it fail for a reason it does not assert
+  // (a 10s connect timeout to github.com:443, retried three times).
   const { runBootstrap } = await load('cli/bootstrap.js');
-  const { mkdtemp, readFile, rm } = await import('node:fs/promises');
+  const { mkdtemp, mkdir, readFile, rm, writeFile } = await import('node:fs/promises');
+  const { pathToFileURL } = await import('node:url');
   const os = await import('node:os');
   const path = await import('node:path');
+  const { createHash } = await import('node:crypto');
+  const { execFile } = await import('node:child_process');
+  const { promisify } = await import('node:util');
+  const run = promisify(execFile);
 
   const root = await mkdtemp(path.join(os.tmpdir(), 'utcd-boot-mount-'));
   const configDir = path.join(root, 'config');
 
   try {
+    // A real (tiny) corpus package: one readable SQLite file at the archive
+    // root, which is the layout `chictr_pancreatic` installs to. It has to be a
+    // genuine database with a `trials` table, because the install verifies it
+    // can be read before reporting success - a text file would (correctly) be
+    // rejected with "file is not a database".
+    const payload = path.join(root, 'payload');
+    await mkdir(payload, { recursive: true });
+    const dbFile = path.join(payload, 'chictr_pancreatic.db');
+    const { DatabaseSync } = await import('node:sqlite');
+    const fixture = new DatabaseSync(dbFile);
+    try {
+      fixture.exec('CREATE TABLE trials (project_id TEXT PRIMARY KEY)');
+      fixture.exec("INSERT INTO trials (project_id) VALUES ('fixture-1')");
+    } finally {
+      fixture.close();
+    }
+    const archive = path.join(root, 'chictr_pancreatic.tar.gz');
+    await run('tar', ['-czf', archive, '-C', payload, 'chictr_pancreatic.db']);
+    const bytes = (await import('node:fs')).statSync(archive).size;
+    const sha256 = createHash('sha256').update(await readFile(archive)).digest('hex');
+
     const outcome = await runBootstrap({
       paths: {
         configDir,
@@ -472,6 +535,25 @@ test('bootstrap: --apply mounts every corpus it installs', async () => {
       dryRun: false,
       withCtvIndex: false,
       maxPages: 1,
+      corpusDeps: {
+        readManifest: async () => ({
+          corpora: {
+            chictr_pancreatic: {
+              url: pathToFileURL(archive).href,
+              bytes,
+              sha256,
+              extractDir: 'chictr_pancreatic',
+              version: '1',
+              title: 't',
+              basis: 'upstream_public',
+            },
+          },
+        }),
+        // Any network use here means the test stopped being hermetic.
+        fetchImpl: async () => {
+          throw new Error('the mount test must not touch the network');
+        },
+      },
     });
 
     const step = outcome.steps.find((entry) => entry.sourceId === 'chictr_pancreatic_archive');
@@ -481,11 +563,17 @@ test('bootstrap: --apply mounts every corpus it installs', async () => {
       `an --apply run must mount what it installed, got: ${step.action} (${step.detail ?? ''})`,
     );
 
-    // The mount must be real, not just claimed in the message.
+    // The mount must be real, not just claimed in the message: it has to point
+    // at the file the install actually produced.
     const written = JSON.parse(await readFile(path.join(configDir, 'unified-trial-mcp.config.json'), 'utf8'));
     assert.ok(
       typeof written.paths?.chictrCorpus === 'string' && written.paths.chictrCorpus.length > 0,
       `config must carry chictrCorpus, got: ${JSON.stringify(written.paths)}`,
+    );
+    const installed = (await import('node:fs')).statSync(written.paths.chictrCorpus);
+    assert.ok(
+      installed.isFile() && installed.size > 0,
+      `the mounted path must be the installed corpus, got: ${written.paths.chictrCorpus}`,
     );
   } finally {
     await rm(root, { recursive: true, force: true });

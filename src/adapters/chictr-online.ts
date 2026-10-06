@@ -279,8 +279,11 @@ export class ChictrOnlineAdapter {
         { keywords: [raw], limit: 20 } as CanonicalQuery,
         ctx,
       );
-      const match = searched.records.find((record) => record.sourceRecordId === raw)
-        ?? searched.records[0];
+      // No fallback to `records[0]`. Taking the first hit of a keyword search
+      // when no record matches the requested id returns a DIFFERENT trial's
+      // detail while reporting success - the caller has no way to tell. In a
+      // clinical context a confidently wrong record is worse than "not found".
+      const match = searched.records.find((record) => record.sourceRecordId === raw);
       const found = match?.registryNumbers?.find((number) => number.registry === 'CHICTR');
       if (!found) {
         throw new AdapterError(
@@ -309,7 +312,17 @@ export class ChictrOnlineAdapter {
       throw new AdapterError('FAILED', 'UPSTREAM_ENVELOPE_UNRECOGNISED', 'ChiCTR 详情响应不是对象。');
     }
     if (payload['error']) {
-      throw new AdapterError('NO_RESULTS', 'RECORD_NOT_FOUND', `ChiCTR 详情查询失败：${String(payload['error'])}`);
+      // An upstream `error` field is not evidence that the record is absent. It
+      // is equally what an expired session, a throttle or a WAF page returns,
+      // and NO_RESULTS asserts "queried, genuinely nothing matched" - which
+      // would turn an upstream failure into a claim of absence. FAILED states
+      // only what is actually known.
+      throw new AdapterError(
+        'FAILED',
+        'CHICTR_DETAIL_UPSTREAM_ERROR',
+        `ChiCTR 详情查询返回错误：${String(payload['error'])}`,
+        { fixHint: '运行 doctor 检查 ChiCTR 在线来源的运行时与会话状态；若持续失败请稍后重试。' },
+      );
     }
 
     const basicInfo = asRecord(payload['basic_info']) ?? payload;

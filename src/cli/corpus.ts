@@ -450,6 +450,22 @@ export async function fetchCorpus(
     // directory. The old data is only removed after the new one is in place.
     const next = `${corpusDir}.new`;
     const previous = `${corpusDir}.old`;
+
+    // Crash recovery has to happen BEFORE anything is deleted. A run
+    // interrupted between "move the old corpus aside" and "move the new one in"
+    // (the two renames below) leaves `corpusDir` missing and `.old` holding the
+    // only surviving copy. Deleting `.old` unconditionally here - which this
+    // code used to do - turns that recoverable interruption into permanent data
+    // loss on the very next run, contradicting rule 2 at the top of this file.
+    // Restoring first means every path below starts from a state where
+    // `corpusDir` holds good data.
+    if (!(await exists(corpusDir)) && (await exists(previous))) {
+      await rename(previous, corpusDir);
+      steps.push(`已恢复上次中断前备份的语料：${corpusDir}`);
+    }
+
+    // With the corpus known-good, leftovers from an earlier attempt are garbage
+    // rather than a backup, so they can be cleared safely.
     await rm(next, { recursive: true, force: true });
     await rm(previous, { recursive: true, force: true });
 
@@ -533,5 +549,10 @@ export async function fetchCorpus(
   } finally {
     // The staging area holds a full copy of the corpus; never leak it on failure.
     await rm(staging, { recursive: true, force: true }).catch(() => undefined);
+    // The swap target is a second full copy. On the success path it no longer
+    // exists (it was renamed onto `corpusDir`), but an EXDEV copy or a failed
+    // rename leaves it behind, and the recovery step above only ever restores
+    // `.old` - never `.new` - so it must not survive a failed run.
+    await rm(`${corpusDir}.new`, { recursive: true, force: true }).catch(() => undefined);
   }
 }

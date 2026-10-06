@@ -44,16 +44,20 @@ export interface LoadedConfig {
   secrets: SecretAccessor;
   configPath?: string;
   warnings: string[];
+  /**
+   * The literal secret values in force, handed to the logger so it can scrub
+   * them out of any message. Key-based redaction (`cookie: ...`) catches a
+   * secret that arrives under a recognisable name; this catches one that is
+   * interpolated into prose, an upstream error string, or a nested field —
+   * which is where a cookie actually leaks.
+   */
+  secretValues: string[];
 }
 
 export function defaultConfigDir(): string {
   const xdg = process.env.XDG_CONFIG_HOME;
   if (xdg && xdg.trim()) return path.join(xdg, 'unified-trial-mcp');
   return path.join(os.homedir(), '.unified-trial-mcp');
-}
-
-export function defaultWorkDir(): string {
-  return path.join(defaultConfigDir(), 'work');
 }
 
 /** Deps injected so tests never need the real filesystem or environment. */
@@ -191,7 +195,15 @@ export async function loadConfig(overrides: PathConfig = {}, deps: ConfigDeps = 
     overrides.evidenceRoots ?? pickStringArray(filePaths, 'evidenceRoots') ?? [];
   const evidenceRoots = evidenceRootsRaw.map((root) => path.resolve(root));
 
-  const workDir = path.resolve(overrides.workDir ?? pickString(filePaths, 'workDir') ?? defaultWorkDir());
+  // The work directory belongs to whichever config directory is in force. It
+  // used to fall back to `defaultWorkDir()`, which re-derived the config dir
+  // from the homedir — so `--config-dir X` (or UNIFIED_TRIAL_CONFIG_DIR) moved
+  // the config and the cookie but silently left `bootstrap` creating
+  // `~/.unified-trial-mcp/work` in the user's home. Derive it from the resolved
+  // `configDir` instead: one override, one location.
+  const workDir = path.resolve(
+    overrides.workDir ?? pickString(filePaths, 'workDir') ?? path.join(configDir, 'work'),
+  );
 
   const paths: ResolvedPaths = {
     configDir,
@@ -237,6 +249,9 @@ export async function loadConfig(overrides: PathConfig = {}, deps: ConfigDeps = 
   }
   paths.evidenceRoots = evidenceRoots;
 
+  // Collected so the logger can scrub the literal values, not just fields whose
+  // NAME looks sensitive. Leaving this unused (as it once was) means a cookie
+  // that reaches a log line inside a sentence is printed verbatim.
   const secretValues: string[] = [];
   for (const key of SECRET_ENV_KEYS) {
     const value = mergedEnv[key];
@@ -255,7 +270,7 @@ export async function loadConfig(overrides: PathConfig = {}, deps: ConfigDeps = 
     warnings.push(`未找到配置文件 ${configPath}；使用默认路径与空配置。`);
   }
 
-  const loaded: LoadedConfig = { paths, secrets, warnings };
+  const loaded: LoadedConfig = { paths, secrets, warnings, secretValues };
   if (fileConfig) loaded.configPath = configPath;
   return loaded;
 }

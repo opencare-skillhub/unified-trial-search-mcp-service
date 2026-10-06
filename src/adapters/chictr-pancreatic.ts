@@ -142,14 +142,18 @@ export class ChictrPancreaticAdapter {
         const columns = SEARCH_COLUMNS.length;
         const clauses: string[] = [];
         for (const term of terms) {
-          clauses.push(`(${SEARCH_COLUMNS.map((column) => `${column} LIKE ?`).join(' OR ')})`);
+          // `ESCAPE` is mandatory here, not decorative: SQLite only honours a
+          // backslash escape when the LIKE expression names one. Without it the
+          // `\%` that escapeLike() produces is read as a literal backslash
+          // followed by a WILDCARD, so a search for "50%" matches everything.
+          clauses.push(`(${SEARCH_COLUMNS.map((column) => `${column} LIKE ? ESCAPE '\\'`).join(' OR ')})`);
           const like = `%${escapeLike(term)}%`;
           for (let i = 0; i < columns; i += 1) params.push(like);
         }
         where.push(`(${clauses.join(' OR ')})`);
       }
       if (query.status?.length) {
-        where.push(`(${query.status.map(() => 'recruitment_status LIKE ?').join(' OR ')})`);
+        where.push(`(${query.status.map(() => `recruitment_status LIKE ? ESCAPE '\\'`).join(' OR ')})`);
         for (const status of query.status) params.push(`%${escapeLike(status)}%`);
       }
       const whereSql = where.length ? `WHERE ${where.join(' AND ')}` : '';
@@ -369,8 +373,16 @@ export class ChictrPancreaticAdapter {
   }
 }
 
+/**
+ * Escapes LIKE wildcards for a pattern used with `ESCAPE '\'`.
+ *
+ * Exactly ONE backslash per character. `\%` is an escape marker plus a literal
+ * `%`; `\\%` would instead be an escaped backslash followed by a LIVE wildcard,
+ * silently reintroducing the wildcard this function exists to suppress. The
+ * backslash itself is escaped first for the same reason.
+ */
 function escapeLike(value: string): string {
-  return value.replace(/[%_]/g, (match) => `\\${match}`);
+  return value.replace(/[\\%_]/g, (match) => `\\${match}`);
 }
 
 export function extractTerms(query: CanonicalQuery): string[] {

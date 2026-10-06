@@ -188,12 +188,20 @@ function parseDetailPage(html: string): {
   return { fields, sections };
 }
 
-/** Extracts the `searchTable` rows without pulling in an HTML parser dependency. */
-function parseListPage(html: string): { rows: ParsedRow[]; totalRecords?: number; totalPages?: number } {
+/**
+ * Extracts the `searchTable` rows without pulling in an HTML parser dependency.
+ *
+ * `tableFound` is reported separately from `rows.length` on purpose: a page
+ * that has the table but no data rows means "queried, nothing matched", while
+ * a page missing the table entirely means "we cannot tell what happened" — an
+ * expired session and a WAF interstitial both answer HTTP 200. Collapsing the
+ * two is how "could not look" becomes "it is not there".
+ */
+function parseListPage(html: string): { rows: ParsedRow[]; totalRecords?: number; totalPages?: number; tableFound: boolean } {
   const rows: ParsedRow[] = [];
 
   const tableMatch = /<table[^>]*class=["'][^"']*searchTable[^"']*["'][^>]*>([\s\S]*?)<\/table>/i.exec(html);
-  if (!tableMatch) return { rows };
+  if (!tableMatch) return { rows, tableFound: false };
 
   const rowHtml = tableMatch[1] ?? '';
   for (const rowMatch of rowHtml.matchAll(/<tr[^>]*>([\s\S]*?)<\/tr>/gi)) {
@@ -231,7 +239,7 @@ function parseListPage(html: string): { rows: ParsedRow[]; totalRecords?: number
       totalRecords = Number.parseInt(match[3] ?? '0', 10);
     }
   }
-  return { rows, ...(totalRecords !== undefined ? { totalRecords } : {}), ...(totalPages !== undefined ? { totalPages } : {}) };
+  return { rows, tableFound: true, ...(totalRecords !== undefined ? { totalRecords } : {}), ...(totalPages !== undefined ? { totalPages } : {}) };
 }
 
 export class ChinaDrugTrialsAdapter {
@@ -414,9 +422,29 @@ export class ChinaDrugTrialsAdapter {
     for (let page = startPage; page <= lastPage; page += 1) {
       const html = await serialize(() => this.post(SEARCH_URL, this.buildForm(keyword, page, query), ctx));
       const parsed = parseListPage(html);
+      // A page carrying NEITHER the result table NOR pagination is not evidence
+      // of "no matches". It is what an expired session, a throttle or a WAF
+      // interstitial looks like when the site still answers 200, and all three
+      // slip past the status-code and captcha checks in `post()`. Returning an
+      // empty record set here would let the orchestrator stamp this source
+      // NO_RESULTS - "queried, genuinely nothing matched" - which is precisely
+      // the false absence this service exists to prevent. Only a response that
+      // still contains the table (or pagination) proves the query ran.
+      if (!parsed.tableFound && parsed.totalPages === undefined) {
+        throw new AdapterError(
+          'DENIED',
+          'CHINADRUGTRIALS_NO_RESULT_TABLE',
+          'ChinaDrugTrials 未返回结果表格与分页信息，无法确认本次检索是否真正执行；通常是会话失效、被限流或返回了中间页面。',
+          {
+            fixHint:
+              '运行 doctor 查看该来源的会话状态，必要时用 configure --cookie-from-entry-page 重新获取合法 Cookie；' +
+              '本服务不会绕过访问控制。',
+          },
+        );
+      }
       if (!parsed.rows.length && page === startPage) {
         warnings.push(
-          'ChinaDrugTrials 未返回结果表格；可能是关键词确实无命中，也可能是会话失效或被限流，请结合来源状态判断。',
+          'ChinaDrugTrials 结果表格为空；已确认检索执行，但未命中任何记录。',
         );
       }
       collected.push(...parsed.rows);

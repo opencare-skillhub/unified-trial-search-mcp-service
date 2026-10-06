@@ -21,7 +21,7 @@ import path from 'node:path';
 import { promises as fs, realpathSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 
-import { CONFIG_FILE_NAME, defaultConfigDir, loadConfig, mergeAndWriteConfig, type PathConfig } from '../core/config.js';
+import { CONFIG_FILE_NAME, defaultConfigDir, loadConfig, mergeAndWriteConfig, type LoadedConfig, type PathConfig } from '../core/config.js';
 import {
   CorpusError,
   DEFAULT_CORPUS_ID,
@@ -135,9 +135,12 @@ function buildConfigOverrides(flags: Map<string, string | boolean>): PathConfig 
   return overrides;
 }
 
-function buildRuntime(loaded: { paths: ResolvedPaths; secrets: ReturnType<typeof loadConfig> extends Promise<infer T> ? (T extends { secrets: infer S } ? S : never) : never }) {
+function buildRuntime(loaded: LoadedConfig) {
   const bundle = createAdapters({ paths: loaded.paths, secrets: loaded.secrets });
-  const logger = createLogger({ level: 'info' });
+  // Wire the literal secrets into the logger. Without this the scrubber only
+  // knows key names, so a cookie interpolated into an upstream error string
+  // would be written to stderr as-is.
+  const logger = createLogger({ level: 'info', secretValues: loaded.secretValues });
   const orchestrator = new Orchestrator({
     adapters: bundle.adapters,
     paths: loaded.paths,

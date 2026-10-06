@@ -26,6 +26,7 @@ import type {
 } from '../core/types.js';
 import { getDescriptor } from '../core/registry.js';
 import { checkPathReadable } from '../core/config.js';
+import { isSafeRecordSegment } from '../core/normalizer.js';
 import { extractTerms } from './chictr-pancreatic.js';
 import { assessCutoff, formatCutoff } from '../core/cutoff.js';
 
@@ -69,6 +70,40 @@ const FUTURE_TOLERANCE_MS = 24 * 60 * 60 * 1000;
 
 /** Cap per-record warnings so a large archive cannot flood the response. */
 const MAX_MISSING_JSON_WARNINGS = 10;
+
+/**
+ * Extracts the record id from a `<sourceId>:<sourceRecordId>` handle and proves
+ * it is safe to use as a path segment.
+ *
+ * This is the only place a caller-supplied handle becomes a filename, so it is
+ * also the only place a traversal attempt can be stopped. `parseRecordHandle`
+ * upstream validates the SOURCE half of the handle; it says nothing about the
+ * record half, and that half is what reaches `path.join` below. Without this
+ * check `xyb_chinadrugtrials_archive:../../../../<anything>` resolves outside
+ * the archive root and its contents come back through `rawFields` — which would
+ * make the "证据路径均在配置允许的根目录之内" promise in the tool response false.
+ */
+function regNoFromHandle(id: string): string {
+  const regNo = id.includes(':') ? id.slice(id.indexOf(':') + 1) : id;
+  if (!isSafeRecordSegment(regNo)) {
+    throw new AdapterError(
+      'FAILED',
+      'INVALID_RECORD_ID',
+      `记录号包含不允许的字符：${regNo}。记录号只能由字母、数字、下划线与连字符组成。`,
+      { fixHint: '请原样传入 search_trials 返回的 recordId，不要手工拼接或修改。' },
+    );
+  }
+  return regNo;
+}
+
+/** True when `target` sits inside at least one of `roots`. */
+function isInsideAny(target: string, roots: string[]): boolean {
+  const absolute = path.resolve(target);
+  return roots.some((root) => {
+    const rel = path.relative(path.resolve(root), absolute);
+    return rel === '' || (!rel.startsWith('..') && !path.isAbsolute(rel));
+  });
+}
 
 export class XybArchiveAdapter {
   readonly descriptor: SourceDescriptor;
@@ -328,7 +363,7 @@ export class XybArchiveAdapter {
   }
 
   async getDetail(id: string, ctx: AdapterContext): Promise<AdapterDetailResult> {
-    const regNo = id.includes(':') ? id.slice(id.indexOf(':') + 1) : id;
+    const regNo = regNoFromHandle(id);
     const packages = await this.loadPackages(ctx);
     for (const pkg of packages) {
       const candidate = path.join(pkg.dir, 'json', `${regNo}.json`);
@@ -354,7 +389,7 @@ export class XybArchiveAdapter {
   }
 
   async getEvidence(id: string, request: EvidenceRequest, ctx: AdapterContext): Promise<AdapterEvidenceResult> {
-    const regNo = id.includes(':') ? id.slice(id.indexOf(':') + 1) : id;
+    const regNo = regNoFromHandle(id);
     const packages = await this.loadPackages(ctx);
     const refs: EvidenceRef[] = [];
     const maxChars = Math.max(0, Math.min(request.maxExcerptChars ?? 4000, 12_000));
@@ -555,20 +590,36 @@ export class XybArchiveAdapter {
  */
 async function resolveArchivePath(pkg: PackageInfo, candidate?: string): Promise<string | undefined> {
   if (!candidate) return undefined;
-  if (path.isAbsolute(candidate)) return candidate;
   const outputDir = path.dirname(pkg.dir);
   const anchors = [
     outputDir,
     path.dirname(outputDir),
     pkg.dir,
   ];
+
+  // A package's recorded `json_path` is DATA inside an archive somebody else
+  // produced, not configuration this host chose, so it is never allowed to name
+  // an arbitrary file. An absolute path is honoured only when it already sits
+  // under one of the anchors; anything else is dropped and the caller falls
+  // back to the conventional `json/<reg_no>.json` location.
+  if (path.isAbsolute(candidate)) {
+    return isInsideAny(candidate, anchors) ? candidate : undefined;
+  }
+
   const normalized = candidate.split(/[\\/]+/).filter(Boolean).join(path.sep);
   const attempts: string[] = [];
   for (const anchor of anchors) {
-    attempts.push(path.join(anchor, normalized));
+    const joined = path.join(anchor, normalized);
+    // `normalized` may still carry `..` segments, which `path.join` would
+    // happily resolve outside the archive. Anything that escapes every anchor
+    // is not a plausible location for this record.
+    if (isInsideAny(joined, anchors)) attempts.push(joined);
     // Drop a leading `output/` segment before retrying against the same anchor.
     const stripped = normalized.replace(/^output[\\/]/, '');
-    if (stripped !== normalized) attempts.push(path.join(anchor, stripped));
+    if (stripped !== normalized) {
+      const strippedJoined = path.join(anchor, stripped);
+      if (isInsideAny(strippedJoined, anchors)) attempts.push(strippedJoined);
+    }
   }
   for (const attempt of attempts) {
     try {

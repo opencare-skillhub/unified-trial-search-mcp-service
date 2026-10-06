@@ -26,6 +26,23 @@ export function parseRecordId(recordId: string): { sourceId: string; sourceRecor
 }
 
 /**
+ * A source record id reaches the filesystem: adapters interpolate it into a
+ * filename such as `json/<sourceRecordId>.json`. The id comes from outside —
+ * an MCP caller supplies the whole `recordId` handle — so anything outside this
+ * character set would let it walk out of the archive root (`../../..`) or name
+ * an absolute path outright.
+ *
+ * Rejected rather than escaped: an unreadable record is a recoverable error,
+ * a directory traversal is not. Both the ChiCTR-drugtrials and XYB adapters
+ * must apply this, since they share one contract with callers.
+ */
+const SAFE_RECORD_SEGMENT = /^[A-Za-z0-9_-]+$/;
+
+export function isSafeRecordSegment(value: string): boolean {
+  return SAFE_RECORD_SEGMENT.test(value);
+}
+
+/**
  * Normalizes a registry number for comparison. Case and separators vary across
  * sources; the identity of the registration itself does not.
  */
