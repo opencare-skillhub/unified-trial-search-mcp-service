@@ -477,7 +477,7 @@ src/
                 chinadrugtrials、xyb-archive
   tools/        7 个 MCP 工具：schemas、handlers、server
   cli/          单一入口：serve / doctor / bootstrap / configure；Cookie 获取
-test/           46 个测试：单元、适配器、编排器、工具
+test/           67 个测试：单元、适配器、编排器、工具
 scripts/        CI 守卫（封闭注册表不变量）
 docs/           运维手册、测试报告、图表资源
 .github/        CI 工作流：类型检查、构建、3 轮测试、不变量守卫
@@ -490,13 +490,14 @@ npm test
 ```
 
 ```
-# tests 46
-# pass 46
+# tests 67
+# pass 66
 # fail 0
+# skipped 1
 ```
 
 其中一个测试是"可选启用"的：它需要真实的 ChiCTR 语料快照（CI 不提供该数据）。未提供时结果
-为 `45 通过 / 1 跳过`；如需对本地语料实测：
+为 `66 通过 / 1 跳过`；如需对本地语料实测：
 
 ```bash
 UNIFIED_TRIAL_TEST_CHICTR_CORPUS=/path/to/chictr_pancreatic.db npm test

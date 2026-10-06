@@ -7,7 +7,7 @@
 [![Node](https://img.shields.io/badge/node-%E2%89%A522.13-brightgreen)](https://nodejs.org/)
 [![TypeScript](https://img.shields.io/badge/TypeScript-5.6-3178C6?logo=typescript&logoColor=white)](https://www.typescriptlang.org/)
 [![MCP](https://img.shields.io/badge/MCP-stdio-8A2BE2)](https://modelcontextprotocol.io/)
-[![Tests](https://img.shields.io/badge/tests-46%20passing-success)](#testing)
+[![Tests](https://img.shields.io/badge/tests-66%20passing-success)](#testing)
 [![Sources](https://img.shields.io/badge/sources-6%20channels-orange)](#the-six-channels)
 [![Tools](https://img.shields.io/badge/MCP%20tools-7-blueviolet)](#the-seven-mcp-tools)
 
@@ -503,7 +503,7 @@ src/
                 chinadrugtrials, xyb-archive
   tools/        7 MCP tools: schemas, handlers, server
   cli/          single entry: serve / doctor / bootstrap / configure; cookie acquisition
-test/           46 tests: unit, adapters, orchestrator, tools
+test/           67 tests: unit, adapters, orchestrator, tools
 scripts/        CI guards (closed-registry invariant)
 docs/           operations manual, test reports, diagram assets
 .github/        CI workflow: typecheck, build, 3 test runs, invariant guards
@@ -516,13 +516,14 @@ npm test
 ```
 
 ```
-# tests 46
-# pass 46
+# tests 67
+# pass 66
 # fail 0
+# skipped 1
 ```
 
 One test is opt-in because it needs a real ChiCTR corpus (a snapshot CI does not ship). Without it
-the suite reports `45 pass / 1 skip`; run it against your own copy with:
+the suite reports `66 pass / 1 skip`; run it against your own copy with:
 
 ```bash
 UNIFIED_TRIAL_TEST_CHICTR_CORPUS=/path/to/chictr_pancreatic.db npm test
