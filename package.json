@@ -1,6 +1,6 @@
 {
   "name": "unified-trial-mcp",
-  "version": "0.3.0",
+  "version": "0.3.1",
   "type": "module",
   "description": "统一临床试验检索 MCP 服务：一个 MCP 入口覆盖 ICTRP、ClinicalTrials.gov、ChiCTR 与中国药物临床试验登记平台（含研究者信息）。",
   "bin": {
