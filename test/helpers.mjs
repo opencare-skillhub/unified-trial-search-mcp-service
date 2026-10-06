@@ -48,3 +48,39 @@ export function silentCtx(paths, secrets = {}, timeoutMs = 5000) {
     secrets: { get: (name) => secrets[name], has: (name) => secrets[name] !== undefined },
   };
 }
+
+/**
+ * Write a stub upstream MCP server that speaks the real stdio protocol.
+ *
+ * The body is wrapped in the imports a server needs, so each test only supplies
+ * the request handlers it cares about. The adapter spawns this with
+ * `process.execPath` and `cwd` set to the package dir, so the SDK has to resolve
+ * from there - hence the `node_modules` symlink back to this checkout. Without
+ * it the child dies on `ERR_MODULE_NOT_FOUND` and the test would be asserting
+ * against a crash rather than against the adapter's behaviour.
+ */
+export async function stubUpstreamServer(dir, body) {
+  await fs.mkdir(path.join(dir, 'dist'), { recursive: true });
+  await fs.writeFile(
+    path.join(dir, 'package.json'),
+    JSON.stringify({ name: 'ut-stub-upstream', version: '1.0.0', type: 'module', main: 'dist/index.js' }),
+    'utf8',
+  );
+  await fs.writeFile(
+    path.join(dir, 'dist', 'index.js'),
+    [
+      "import { Server } from '@modelcontextprotocol/sdk/server/index.js';",
+      "import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';",
+      "import { ListToolsRequestSchema, CallToolRequestSchema } from '@modelcontextprotocol/sdk/types.js';",
+      body,
+    ].join('\n'),
+    'utf8',
+  );
+  const link = path.join(dir, 'node_modules');
+  try {
+    await fs.symlink(path.join(ROOT, 'node_modules'), link, 'dir');
+  } catch (error) {
+    if (error.code !== 'EEXIST') throw error;
+  }
+  return dir;
+}

@@ -33,8 +33,14 @@ export function parseRecordId(recordId: string): { sourceId: string; sourceRecor
  * an absolute path outright.
  *
  * Rejected rather than escaped: an unreadable record is a recoverable error,
- * a directory traversal is not. Both the ChiCTR-drugtrials and XYB adapters
- * must apply this, since they share one contract with callers.
+ * a directory traversal is not. Apply this in every adapter that turns an id
+ * into a path — the XYB archive does, reading `json/<id>.json`. The ChiCTR
+ * corpus adapter does NOT need it: it binds the id as a SQL parameter
+ * (`WHERE project_id = ?`) and otherwise only embeds it in a `sqlite:` pseudo-
+ * path string, so no id reaches the filesystem through it. That is why the
+ * check sits at the point of use rather than inside `parseRecordHandle`: a
+ * blanket rule there would reject ids the corpus can serve correctly while
+ * proving nothing about the ones that do become a path.
  */
 const SAFE_RECORD_SEGMENT = /^[A-Za-z0-9_-]+$/;
 

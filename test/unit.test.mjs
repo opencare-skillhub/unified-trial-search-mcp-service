@@ -192,6 +192,78 @@ test('logger: secret-looking fields are redacted', async () => {
   assert.ok(!text.includes('Bearer x'));
 });
 
+test('logger: a literal cookie is scrubbed out of prose, not just out of a named field', async () => {
+  // Key-name redaction only catches a secret that arrives under a recognisable
+  // FIELD name (`cookie: ...`). A cookie that reaches a log line inside a
+  // sentence - an upstream error string, a transport message that quotes the
+  // request - has no key to match on, so the scrubber has to be told the
+  // literal value. Behaviourally, two things must both hold, and this test
+  // covers the first: loadConfig must actually collect the values, and the
+  // logger must remove them once given them.
+  //
+  // The second half - that buildRuntime hands them over - is asserted by
+  // `logger: the cli wires the literal secrets into its logger` below, because
+  // calling createLogger directly here would keep passing after that wiring was
+  // deleted, and the wiring is the entire fix.
+  const { loadConfig } = await load('core/config.js');
+  const { createLogger } = await load('core/logger.js');
+  const { mkdtemp, rm } = await import('node:fs/promises');
+  const os = await import('node:os');
+  const path = await import('node:path');
+
+  const COOKIE = 'SESSIONCOOKIE-c0ffee-9284';
+  const root = await mkdtemp(path.join(os.tmpdir(), 'ut-secret-wire-'));
+  try {
+    const loaded = await loadConfig(
+      { configDir: root },
+      {
+        env: { UNIFIED_TRIAL_CONFIG_DIR: root, CHINADRUGTRIALS_COOKIE: COOKIE },
+        readFile: async () => {
+          throw Object.assign(new Error('ENOENT'), { code: 'ENOENT' });
+        },
+      },
+    );
+    assert.ok(
+      loaded.secretValues.includes(COOKIE),
+      `loadConfig must expose the literal secret, got ${JSON.stringify(loaded.secretValues)}`,
+    );
+
+    const lines = [];
+    const logger = createLogger({ level: 'info', secretValues: loaded.secretValues, sink: (l) => lines.push(l) });
+    // The message shapes a real leak takes: the value inside a sentence, and
+    // inside a transport-style message that quotes the request headers.
+    logger.warn('上游返回了意外内容', {
+      detail: `invalid session, cookie=${COOKIE}, retrying`,
+      transport: `request failed, headers: { cookie: '${COOKIE}' }`,
+    });
+    logger.error(`ChinaDrugTrials 拒绝访问（cookie ${COOKIE} 已失效）`);
+
+    const output = lines.join('\n');
+    assert.equal(lines.length, 2, 'both lines must be emitted');
+    assert.ok(!output.includes(COOKIE), `the literal cookie must never reach the sink, got: ${output}`);
+    assert.ok(output.includes('[REDACTED]'), 'the scrub must be visible, not a silent drop');
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test('logger: the cli wires the literal secrets into its logger', async () => {
+  // The wiring half of the fix above. `buildRuntime` used to call
+  // `createLogger({ level: 'info' })` with no `secretValues`, so the scrubber
+  // had key names only and a cookie in prose went out verbatim. A test that
+  // calls createLogger itself cannot see that regression, so this one reads the
+  // real source: the call site must pass `loaded.secretValues`.
+  const { DIST } = await import('./helpers.mjs');
+  const { readFile } = await import('node:fs/promises');
+  const path = await import('node:path');
+  const source = await readFile(path.join(DIST, 'cli', 'main.js'), 'utf8');
+  assert.match(
+    source,
+    /createLogger\(\{[^}]*secretValues:\s*loaded\.secretValues/,
+    'the cli must hand the literal secret values to the logger, or a cookie interpolated into a message is logged in the clear',
+  );
+});
+
 test('tools: unknown source ids are rejected', async () => {
   const { TOOL_HANDLERS } = await load('tools/handlers.js');
   const outcome = await TOOL_HANDLERS['get_source_status']({ sourceIds: ['evil_source'] }, {});
@@ -574,6 +646,126 @@ test('bootstrap: --apply mounts every corpus it installs', async () => {
     assert.ok(
       installed.isFile() && installed.size > 0,
       `the mounted path must be the installed corpus, got: ${written.paths.chictrCorpus}`,
+    );
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test('corpus: a crash between the two renames recovers the previous install instead of losing it', async () => {
+  // The swap is two renames: `corpusDir -> corpusDir.old`, then `corpusDir.new
+  // -> corpusDir`. An interruption between them leaves corpusDir MISSING and
+  // `.old` holding the only surviving copy. This code used to delete `.old`
+  // unconditionally on the next run, which turned a recoverable interruption
+  // into permanent data loss - contradicting this file's own rule that a failed
+  // install never damages what is already installed. These two tests pin the
+  // recovery half and the cleanup half separately, because a fix for one can
+  // easily break the other.
+  const { fetchCorpus } = await load('cli/corpus.js');
+  const { mkdtemp, mkdir, readFile, rm, writeFile, stat } = await import('node:fs/promises');
+  const { pathToFileURL } = await import('node:url');
+  const os = await import('node:os');
+  const path = await import('node:path');
+  const { createHash } = await import('node:crypto');
+  const { execFile } = await import('node:child_process');
+  const { promisify } = await import('node:util');
+  const run = promisify(execFile);
+
+  // NOTE: the table name is fixed to `trials` on purpose. The install verifies
+  // the payload by counting rows in SQLITE_TABLE_BY_CORPUS[corpusId], so a
+  // fixture using any other table name is rejected with "no such table".
+  const buildArchive = async (root, variant) => {
+    const payload = path.join(root, `payload-${variant}`);
+    await mkdir(payload, { recursive: true });
+    const dbFile = path.join(payload, 'chictr_pancreatic.db');
+    const { DatabaseSync } = await import('node:sqlite');
+    const fixture = new DatabaseSync(dbFile);
+    try {
+      fixture.exec('CREATE TABLE trials (project_id TEXT PRIMARY KEY)');
+      fixture.exec(`INSERT INTO trials (project_id) VALUES ('fixture-${variant}')`);
+    } finally {
+      fixture.close();
+    }
+    const archive = path.join(root, `chictr_pancreatic-${variant}.tar.gz`);
+    await run('tar', ['-czf', archive, '-C', payload, 'chictr_pancreatic.db']);
+    return {
+      url: pathToFileURL(archive).href,
+      bytes: (await stat(archive)).size,
+      sha256: createHash('sha256').update(await readFile(archive)).digest('hex'),
+      extractDir: 'chictr_pancreatic',
+      version: '1',
+      title: 't',
+      basis: 'upstream_public',
+    };
+  };
+
+  const root = await mkdtemp(path.join(os.tmpdir(), 'utcd-corpus-recover-'));
+  try {
+    // ---- Half 1: a surviving `.old` backup must be restored, not deleted.
+    const destDir = path.join(root, 'dest');
+    const corpusDir = path.join(destDir, 'chictr_pancreatic');
+    // The state left behind by a crash between the two renames: the installed
+    // directory is gone, and only the backup holds the data.
+    const previousDir = `${corpusDir}.old`;
+    await mkdir(previousDir, { recursive: true });
+    // A REAL database, so the adapter-facing content check can only pass if the
+    // restore actually happened.
+    const { DatabaseSync } = await import('node:sqlite');
+    const survivor = path.join(previousDir, 'chictr_pancreatic.db');
+    const db = new DatabaseSync(survivor);
+    try {
+      db.exec('CREATE TABLE trials (project_id TEXT PRIMARY KEY)');
+      db.exec("INSERT INTO trials (project_id) VALUES ('survivor')");
+    } finally {
+      db.close();
+    }
+
+    const entry = await buildArchive(root, 'newer');
+    const result = await fetchCorpus(
+      { corpusId: 'chictr_pancreatic', destDir, apply: true },
+      {
+        readManifest: async () => ({ corpora: { chictr_pancreatic: entry } }),
+        // Offline on purpose: the recovery must be observable without a network.
+        fetchImpl: async () => new Response('unused'),
+      },
+    );
+
+    assert.ok(
+      result.steps.some((step) => step.includes('已恢复')),
+      `the interrupted install must be reported as recovered, got: ${JSON.stringify(result.steps)}`,
+    );
+    // After a successful install the NEW corpus must be in place...
+    assert.ok(result.dbPath && (await stat(result.dbPath)).isFile(), 'the new corpus must be installed');
+    // ...and the stale backup must be gone, so it cannot shadow future runs.
+    await assert.rejects(() => stat(previousDir), 'the recovered backup must not be left behind');
+
+    // ---- Half 2: `.new` must not survive a failed run.
+    // A `.new` left by an earlier EXDEV copy or failed rename is a full extra
+    // copy and garbage; the recovery step above only ever restores `.old`, so a
+    // leftover `.new` would never be cleaned up on later successes either.
+    const destDir2 = path.join(root, 'dest2');
+    const corpusDir2 = path.join(destDir2, 'chictr_pancreatic');
+    await mkdir(`${corpusDir2}.new`, { recursive: true });
+    await writeFile(path.join(`${corpusDir2}.new`, 'leftover.txt'), 'garbage');
+
+    const entry2 = await buildArchive(root, 'second');
+    await assert.rejects(
+      () =>
+        fetchCorpus(
+          { corpusId: 'chictr_pancreatic', destDir: destDir2, apply: true },
+          {
+            readManifest: async () => ({ corpora: { chictr_pancreatic: entry2 } }),
+            // Fail AFTER staging has been created, so the finally block runs.
+            runTar: async () => {
+              throw new Error('simulated extraction failure');
+            },
+          },
+        ),
+      /simulated extraction failure/,
+    );
+    await assert.rejects(
+      () => stat(`${corpusDir2}.new`),
+      'a failed run must not leave a second full copy of the corpus behind',
     );
   } finally {
     await rm(root, { recursive: true, force: true });
