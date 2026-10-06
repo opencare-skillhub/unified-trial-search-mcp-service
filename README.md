@@ -213,6 +213,13 @@ lifecycle — packaging, uploading a release, the automated deploy path (downloa
 swap → mount → query), how to publish an updated version every couple of months, troubleshooting, and the
 redistribution grounds. It also lists every URL and digest in full.
 
+> **⚠️ The easiest mistake when updating a database**: `corpora/manifest.json` ships *inside* the npm
+> package, and `fetch-corpus` reads **the copy in its own package** — there is no remote manifest fetch.
+> So **pushing git without publishing a new npm version means already-installed users never see the new
+> database.** Publish both lines together: upload the release asset → commit the manifest →
+> `npm version patch && npm publish`. See
+> [docs/corpus-lifecycle.md §4.2.1](docs/corpus-lifecycle.md) for the step diagram and the measured evidence.
+
 ### Offline snapshots declare their own data cutoff
 
 The two offline sources are **snapshots**, not live data. Each reports its data cutoff explicitly, because a

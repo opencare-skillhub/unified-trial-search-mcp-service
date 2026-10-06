@@ -268,11 +268,73 @@ gh release view chictr_pancreatic-2026-12-05 --json assets --jq '.assets[].diges
 git add corpora/manifest.json && git commit -m "data: publish chictr_pancreatic 2026-12-05" && git push
 ```
 
-用户端**无需任何额外操作**，重新执行同一条命令即升级到新版：
+用户端如何拿到新版，取决于**你发的是哪条线** —— 见下一节，这是最容易出错的地方。
+
+### 4.2.1 两条发布线：数据库走 git，客户端走 npm
+
+`corpora/manifest.json` **同时活在两个地方**：git 仓库里一份，每个已安装的 npm 包里也有一份快照
+（`src/cli/corpus.ts:37` 的 `MANIFEST_PATH` 指向包内的 `corpora/manifest.json`）。
+`fetch-corpus` 读的是**自己所在包里的那一份**，没有任何远程拉取清单的机制。
+
+后果很直接：**只推 git、不发新 npm 版本，老用户永远拿不到新数据库。**
+
+实测（pack 出 0.3.0 装好后，把仓库里的清单改成新大小）：
+
+| 操作 | 已装 0.3.0 的用户跑 `fetch-corpus` 看到 |
+|---|---|
+| 仓库清单改为新版 | 仍然是旧值 `23964370`（读包内快照） |
+
+所以两条线要**一起发**：
+
+```
+新数据库就绪
+   │
+   ├─ ① node scripts/pack-corpus.mjs --corpus <id> --version <YYYY-MM-DD> --write-manifest
+   │
+   ├─ ② gh release create <id>-<version> dist-release/<id>.tar.gz       ← 资产先上传
+   │
+   ├─ ③ gh release view <id>-<version> --json assets --jq '.assets[].digest'
+   │      比对清单里的 sha256 是否一致
+   │
+   ├─ ④ git add corpora/manifest.json && git commit -m "data: publish <id> <version>" && git push
+   │      ↑ 到这一步「没升级 npm 版本」的老用户仍然拿不到新库
+   │
+   └─ ⑤ npm version patch && npm publish && git push --follow-tags
+          ↑ 老用户从这里开始才能拿到新库
+```
+
+**版本号怎么挑**：数据库更新用 `npm version patch`（0.3.0 → 0.3.1）即可 —— 客户端代码没变，
+变的只是包内清单。想发功能更新就用 `minor`。清单版本（`<corpusId>-<YYYY-MM-DD>`）与 npm 版本是**两套独立编号**，不要混。
+
+也正因为如此：**改清单的提交必须与 npm 发布同批**。若只提交清单就收工，
+用户会以为"更新好了"，实际拿到的是旧地址。
+
+### 4.2.2 用户端一条命令完成升级
+
+老用户（已装旧版 npm 包）升级分两段，第二段只是重跑同一条命令：
 
 ```bash
-unified-trial-mcp fetch-corpus --corpus chictr_pancreatic --apply   # 自动拿到清单里的新版本
+# 1) 升级客户端（拿到新清单）
+npm install -g unified-trial-mcp@latest
+
+# 2) 重新安装语料（fetch-corpus 会读新清单里的新 URL/sha256，自动下新库）
+unified-trial-mcp fetch-corpus --corpus chictr_pancreatic --apply
 ```
+
+`fetch-corpus --apply` 是幂等的：目标目录里已有旧库时会走「下载 → 校验 sha256 → 解压到暂存 → 原子替换」，
+失败则保留旧库不动。所以**重跑是安全的**，不需要先手工删除旧库。
+
+用 `bootstrap --apply` 可以一次把三个语料都升到清单里的最新版：
+
+```bash
+unified-trial-mcp bootstrap --apply
+```
+
+只验不做（先看重不重要）用 `fetch-corpus --corpus <id> --print-url` 看将要下载的地址，
+或 `--json` 拿结构化字段（`corpusId/url/bytes/sha256/destDir/corpusDir/dbPath/applied/steps`）。
+
+**发布前自检**：`npm test` 里有一条守卫 `npm: the package version moves when the published corpus list moves`，
+它会在清单已改但未提交时直接失败，把「忘了发」挡在 publish 之前。
 
 ### 4.3 同日修正（发布后发现问题要重发）
 
@@ -288,6 +350,8 @@ gh release create ctv_index-2026-10-05-02 dist-release/ctv_index.tar.gz --title 
 - **`basis` 不可缺省。** 缺少 `basis` 的资产会被 `fetch-corpus` 直接拒绝（`MANIFEST_BASIS_MISSING`）。这是刻意的：不允许有人把"看起来可以分发"的东西塞进来而不说明凭什么可以分发。
 - **缺条目会在打包前直接失败。** 脚本启动时先检查该语料声明的每个必需条目（如 `胰腺癌/`、`chictr_pancreatic.db`）是否存在；缺一个就立刻退出，不会产出"成功但不完整"的归档。
 - **更新后确认数据截止日变了。** 装完跑 `doctor`，离线来源会打印 `数据截止 <日期>`；若仍显示旧日期，说明装错了来源或缓存未刷新。
+- **改了清单一定要发新 npm 版本。** 见 §4.2.1 —— 老用户读的是自己包里的清单快照，不发新版就永远停在旧地址。
+- **两套版本号别混。** 清单里的 `<corpusId>-<YYYY-MM-DD>` 决定 Release tag 与下载 URL；npm 的 `0.3.0` 决定客户端包。同一个数据库更新通常两者都要动。
 
 ### 4.5 数据截止日必须"从数据推导"
 

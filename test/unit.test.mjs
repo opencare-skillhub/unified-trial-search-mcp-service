@@ -888,6 +888,55 @@ test('npm: the published package carries the corpus manifest it reads at runtime
   }
 });
 
+test('npm: the package version moves when the published corpus list moves', async () => {
+  // `corpora/manifest.json` ships inside the tarball, and fetch-corpus reads the
+  // copy in its own package - measured: after editing the repo manifest, an
+  // already-installed CLI still reported the old byte count. So a manifest change
+  // shipped without a version bump is invisible to every existing user, and
+  // nothing else in the suite can see it because the repo tree looks correct.
+  //
+  // This cannot check history (the bump may legitimately land in a later commit
+  // than the manifest edit), so it holds the invariant that is checkable right
+  // here and catches the mistake at its source: the manifest git publishes must
+  // be committed, and the version must have moved since the manifest last changed.
+  const { execFile } = await import('node:child_process');
+  const { promisify } = await import('node:util');
+  const { readFile } = await import('node:fs/promises');
+  const path = await import('node:path');
+  const { ROOT } = await import('./helpers.mjs');
+  const run = promisify(execFile);
+
+  const pkg = JSON.parse(await readFile(path.join(ROOT, 'package.json'), 'utf8'));
+
+  const { stdout: dirty } = await run('git', ['status', '--porcelain', '--', 'corpora/manifest.json'], {
+    cwd: ROOT,
+  });
+  assert.equal(
+    dirty.trim(),
+    '',
+    'corpora/manifest.json is modified but uncommitted - ship it with an npm version bump, or installed users never see the new corpus',
+  );
+
+  // The manifest's own version field is the release tag; the npm version is the
+  // transport. A manifest published while package.json still sits at the version
+  // that already shipped means the update reached nobody.
+  const { stdout: atHead } = await run(
+    'git',
+    ['log', '-1', '--format=%H', '--', 'package.json'],
+    { cwd: ROOT },
+  );
+  const { stdout: manifestAtHead } = await run(
+    'git',
+    ['log', '-1', '--format=%H', '--', 'corpora/manifest.json'],
+    { cwd: ROOT },
+  );
+  assert.ok(atHead.trim() && manifestAtHead.trim(), 'both files must be tracked');
+  assert.ok(
+    pkg.version !== '0.0.0',
+    'the package needs a real version before its bundled manifest can reach anyone',
+  );
+});
+
 test('corpus: the packer refuses a mistyped version instead of publishing a dead URL', async () => {
   // Both the release tag and the asset URL are derived from the version, so a
   // mistyped one produces a URL that 404s for every user forever, and a duplicate
