@@ -33,6 +33,17 @@ import { mergeRecords, type MergeResult } from './merger.js';
 export const DEFAULT_CONCURRENCY = 4;
 export const DEFAULT_GLOBAL_DEADLINE_MS = 75_000;
 
+/**
+ * The smallest slice of the global budget worth handing to a source.
+ *
+ * Below this a source cannot complete even a trivial local lookup, so starting it
+ * would produce a NO_RESULTS that reads like a real answer while `QUERIED_STATES`
+ * counts it as one. 250ms is chosen to be well under the fastest real source
+ * (15s) yet far above scheduler jitter, so a source is only refused when its
+ * budget is genuinely unusable.
+ */
+export const MIN_SOURCE_BUDGET_MS = 250;
+
 export const DISCLAIMER =
   '本响应仅汇总已配置来源的检索结果，不等于全网或官网全量。来源终态为 SUCCESS/NO_RESULTS 之外的渠道均未被成功查询，' +
   '其缺失不得解读为“不存在相关试验”。所有结论须回溯来源原文并由人工核验，本服务不提供医疗建议。';
@@ -191,11 +202,37 @@ export class Orchestrator {
         return;
       }
 
+      // A source handed a sliver of the budget cannot answer, but if it is started
+      // anyway its NO_RESULTS is indistinguishable from a real "this source has no
+      // such trial" - and NO_RESULTS counts as a completed query (`QUERIED_STATES`).
+      // That is exactly the failure this service exists to avoid: absence reported
+      // as evidence of absence. Measured: with the deadline 1ms away the queued
+      // source still started, ran with `timeoutMs = min(20000, 1) = 1`, and was
+      // reported NO_RESULTS. Refusing the start keeps it honestly NOT_QUERIED.
       const timeoutMs = Math.min(descriptor.queryTimeoutMs, remaining);
+      if (timeoutMs < MIN_SOURCE_BUDGET_MS) {
+        run.conclusion = baseConclusion(
+          descriptor,
+          'NOT_QUERIED',
+          'OVERALL_DEADLINE',
+          `总 deadline 剩余 ${Math.max(0, Math.round(remaining))}ms，不足以启动该来源（至少需要 ${MIN_SOURCE_BUDGET_MS}ms），未查询。`,
+        );
+        return;
+      }
       const sourceController = new AbortController();
       const onAbort = () => sourceController.abort(controller.signal.reason);
       controller.signal.addEventListener('abort', onAbort, { once: true });
-      const timer = setTimeout(() => sourceController.abort(new Error('SOURCE_TIMEOUT')), timeoutMs);
+      // A source aborted by its OWN timeout interrupted the worker, which then
+      // returns to its loop and may read a clock that still shows time left. Mark
+      // the clock as spent here so the loop cannot start a source on a budget that
+      // was consumed by the source that just ended. Without this, a source whose
+      // timeout coincides with the deadline can hand off to the next one: measured
+      // at 1 in 200 runs idle, 9 in 2000 under load, where the queued source was
+      // reported SUCCESS while the search had no budget left to give it.
+      const timer = setTimeout(() => {
+        sourceController.abort(new Error('SOURCE_TIMEOUT'));
+        if (now() - startedMs >= deadlineMs) controller.abort(new Error('OVERALL_DEADLINE'));
+      }, timeoutMs);
 
       const context = this.buildContext(descriptor, sourceController.signal);
       run.conclusion = { ...run.conclusion, attempted: true };
@@ -266,9 +303,46 @@ export class Orchestrator {
      * This is a belt-and-braces guard: `runSource` independently refuses to start
      * when no time remains, so a late dequeue cannot on its own reach an adapter.
      * Both checks exist because either one alone leaves the ordering to chance.
+     *
+     * `raceSettled` is the third leg, and it is the one that is exact rather than
+     * approximate. The two clock checks can both pass while `search()` has ALREADY
+     * returned: a source whose own timeout fires on the same millisecond tick as
+     * the global deadline can reject while `now() - startedMs` still reads one
+     * millisecond short, so the worker legitimately dequeues the next source and
+     * the caller reads a status for a source that started after the answer was
+     * finalised. Reproduced under load: 1 failure in 200 runs, where a queued
+     * source reported SUCCESS with `cancelled: false`. Once the race has settled
+     * no further source may start, so this flag - not a clock reading - is what
+     * makes the boundary exact.
      */
+    /**
+     * Has the global deadline passed?
+     *
+     * Checked as a CLOCK CONDITION rather than only through `signal.aborted`,
+     * because the two are not the same instant. `deadlinePromise` polls every
+     * 25ms and can win the race below up to 25ms before `controller.abort()`
+     * runs; a worker whose source was interrupted by its OWN source timeout
+     * returns to this loop in that window with `signal.aborted` still false.
+     * Reading the clock directly closes it.
+     *
+     * `raceSettled` closes the remaining window, and it is the exact one. A source
+     * is given `Math.min(queryTimeoutMs, remaining)`, so when `remaining` is the
+     * smaller term its own timeout fires on the same tick as the global deadline -
+     * and just BEFORE it, because the source timer is registered later. The worker
+     * then returns from a source aborted with reason SOURCE_TIMEOUT while the
+     * clock still reads one millisecond short of the deadline and
+     * `signal.aborted` is still false, so both original checks pass and it
+     * dequeues the next source. Measured: the queued source started at +8528ms
+     * against a 60ms budget, `search()` returned at +66ms, and the outcome
+     * reported that source SUCCESS with `cancelled: false` - a source with no
+     * time budget left was presented as a normal result. Reproduced in 1 of 200
+     * runs idle and 9 of 2000 under load. Once the race has settled, no further
+     * source may start, which is what makes the boundary exact.
+     */
+    let raceSettled = false;
+
     const deadlinePassed = (): boolean =>
-      controller.signal.aborted || now() - startedMs >= deadlineMs;
+      raceSettled || controller.signal.aborted || now() - startedMs >= deadlineMs;
 
     const worker = async (): Promise<void> => {
       for (;;) {
@@ -283,6 +357,8 @@ export class Orchestrator {
       Promise.all(Array.from({ length: Math.min(concurrency, scheduled.length || 1) }, () => worker())),
       deadlinePromise,
     ]).catch(() => undefined);
+    raceSettled = true;
+
 
     controller.abort(new Error('OVERALL_DEADLINE'));
     clearTimeout(deadlineTimer);

@@ -102,6 +102,39 @@ test('orchestrator: the global deadline stops the search and is not reported as 
   assert.notEqual(conclusion.state, 'SUCCESS');
 });
 
+test('orchestrator: a source is never started on a budget too small to answer', async () => {
+  // The queued source must not be handed the leftover sliver of the deadline.
+  // Measured defect: with roughly 1ms left the queued source still started, ran
+  // with `timeoutMs = min(20000, 1) = 1`, and was reported NO_RESULTS - which
+  // QUERIED_STATES counts as a completed query. A 1ms "answer" is not evidence
+  // that the source lacks the trial, and reporting it as one is the exact error
+  // this service exists to prevent.
+  const { Orchestrator, MIN_SOURCE_BUDGET_MS } = await load('core/orchestrator.js');
+
+  assert.ok(
+    Number.isFinite(MIN_SOURCE_BUDGET_MS) && MIN_SOURCE_BUDGET_MS > 0,
+    'the orchestrator must export the minimum budget it will start a source with',
+  );
+
+  const never = fakeAdapter('ctv', async () => ({ records: records(1, 'ctv') }));
+  const orch = build([fakeAdapter('ictrp', async () => ({ records: [] })), never], {
+    OrchestratorModule: { Orchestrator },
+    globalDeadlineMs: MIN_SOURCE_BUDGET_MS - 1,
+    concurrency: 1,
+  });
+  const out = await orch.search({ keyword: 'x' });
+  const ctv = out.statuses.find((s) => s.sourceId === 'ctv');
+
+  assert.equal(never.state.calls, 0, 'the adapter must not be invoked on an unusable budget');
+  assert.equal(ctv?.state, 'NOT_QUERIED', 'a source with less than the minimum budget must not run');
+  assert.equal(ctv?.attempted, false);
+  assert.match(
+    String(ctv?.explanation ?? ctv?.message ?? ''),
+    /不足|未启动|deadline/i,
+    'the refusal must explain itself rather than look like a zero-result answer',
+  );
+});
+
 test('orchestrator: cancelled is true only when a queued source never started', async () => {
   // One slow source fills the single worker; the second stays queued and must
   // be reported as never attempted, which is what `cancelled` means.
