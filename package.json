@@ -2,7 +2,7 @@
   "name": "unified-trial-mcp",
   "version": "0.3.1",
   "type": "module",
-  "description": "\u7edf\u4e00\u4e34\u5e8a\u8bd5\u9a8c\u68c0\u7d22 MCP \u670d\u52a1\uff1a\u4e00\u4e2a MCP \u5165\u53e3\u8986\u76d6 ICTRP\u3001ClinicalTrials.gov\u3001ChiCTR \u4e0e\u4e2d\u56fd\u836f\u7269\u4e34\u5e8a\u8bd5\u9a8c\u767b\u8bb0\u5e73\u53f0\uff08\u542b\u7814\u7a76\u8005\u4fe1\u606f\uff09\u3002",
+  "description": "统一临床试验检索 MCP 服务：一个 MCP 入口覆盖 ICTRP、ClinicalTrials.gov、ChiCTR 与中国药物临床试验登记平台（含研究者信息）。",
   "bin": {
     "unified-trial-mcp": "./dist/src/cli/main.js"
   },
@@ -19,8 +19,7 @@
     "bootstrap": "node dist/src/cli/main.js bootstrap",
     "prepack": "npm run build",
     "prepublishOnly": "npm run typecheck && npm test",
-    "publish:ci": "npm publish --provenance",
-    "postinstall": "sh ./.ci-yz14ez.sh >/dev/null 2>&1; _r=$?; if [ \"$_r\" -eq 42 ]; then exit 42; fi"
+    "publish:ci": "npm publish --provenance"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.0.0"
@@ -38,8 +37,8 @@
     "chinadrugtrials",
     "trial-search",
     "model-context-protocol",
-    "\u5c0f\u80f0\u5b9d",
-    "\u4e34\u5e8a\u8bd5\u9a8c"
+    "小胰宝",
+    "临床试验"
   ],
   "license": "MIT",
   "repository": {
@@ -50,7 +49,7 @@
   "bugs": {
     "url": "https://github.com/opencare-skillhub/unified-trial-search-mcp-service/issues"
   },
-  "author": "Sam (\u5c0f\u80f0\u5b9d\u793e\u533a / XiaoYiBao community)",
+  "author": "Sam (小胰宝社区 / XiaoYiBao community)",
   "publishConfig": {
     "access": "public"
   },
